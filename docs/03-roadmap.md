@@ -35,18 +35,20 @@ M4 Production     : F12 → F13 → F14
 
 **Tujuan:** kerangka monorepo yang bisa jalan, dites, dan di-lint.
 
-- [ ] pnpm workspace: `backend/`, `frontend/`
-- [ ] `docker-compose.yml`: PostgreSQL 16 (2 database: `digital_archaeology` dan `da_vault`, dengan user DB berbeda) + Redis
-- [ ] Backend Fastify + TypeScript strict + konfigurasi env tervalidasi Zod (`src/config`)
-- [ ] Logger Pino dengan daftar `redact` untuk field sensitif
-- [ ] Endpoint `GET /health`, `/health/database`, `/health/rpc` (stub dulu)
-- [ ] Format error standar (`code, message, timestamp, request_id, resource_id`)
-- [ ] Frontend React + Vite + Tailwind dengan layout & menu kosong (sesuai SA bagian 14)
-- [ ] ESLint + Prettier + Vitest di kedua package
-- [ ] `.env.example`, `.gitignore` (wajib berisi `.env`, `*.key`, `*.pem`, `keystore/`)
-- [ ] Isi bagian **Perintah** di [CLAUDE.md](../CLAUDE.md)
+- [x] pnpm workspace: `backend/`, `frontend/`, `shared/` (`@da/shared`: logger + error)
+- [x] `docker-compose.yml`: PostgreSQL 16 (2 database: `digital_archaeology` dan `da_vault`, dengan user DB berbeda) + Redis
+- [x] Backend Fastify + TypeScript strict + konfigurasi env tervalidasi Zod (`src/config`)
+- [x] Logger Pino dengan daftar `redact` untuk field sensitif
+- [x] Endpoint `GET /health`, `/health/database`, `/health/rpc` (stub dulu)
+- [x] Format error standar (`code, message, timestamp, request_id, resource_id`)
+- [x] Frontend React + Vite + Tailwind dengan layout & menu kosong (sesuai SA bagian 14)
+- [x] ESLint + Prettier + Vitest di kedua package
+- [x] `.env.example`, `.gitignore` (wajib berisi `.env`, `*.key`, `*.pem`, `keystore/`)
+- [x] Isi bagian **Perintah** di [CLAUDE.md](../CLAUDE.md)
 
 **DoD:** `docker compose up -d && pnpm dev` jalan, `/health` mengembalikan 200, `pnpm test`, `pnpm lint`, dan `pnpm typecheck` hijau, dan test redaction logger lulus.
+
+> **Status 2026-10-01:** semua terpenuhi **kecuali** verifikasi `docker compose up -d`, karena Docker Desktop di mesin dev gagal start ("Docker Desktop is unable to start"). Tanpa DB, `/health/database` sudah terbukti mengembalikan 503 `DATABASE_UNAVAILABLE`. Setelah Docker hidup: jalankan `docker compose up -d`, lalu pastikan `/health/database` = 200.
 
 ---
 
@@ -250,3 +252,4 @@ M4 Production     : F12 → F13 → F14
 | 2026-10-01 | F0 | Dokumen perencanaan dibuat |
 | 2026-10-01 | F0 | ADR-003/008/009: key dipegang SUPER_ADMIN di Key Vault terenkripsi |
 | 2026-10-01 | F0 | ADR-001/002/004–007 Accepted: TypeScript stack, EVM Sepolia, internal use, >3 operator |
+| 2026-10-01 | F1 | Monorepo + shared/backend/frontend, 49 test hijau. Pending: verifikasi Docker (Docker Desktop gagal start) |

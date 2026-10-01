@@ -23,19 +23,20 @@ Kebutuhan lengkap: `system_analysis_digital_archaeology.md`. Revisi & keputusan:
 
 ## Stack (lihat docs/07-decisions.md)
 
-- Monorepo pnpm: `backend/` (Node.js + TypeScript + Fastify + Prisma + PostgreSQL + Redis/BullMQ + Pino + Zod + Vitest), `frontend/` (React + Vite + TypeScript + TanStack Query + Tailwind), `signer/` (service internal Key Vault + signing, DB `da_vault` sendiri, tidak terekspos ke internet).
+- Monorepo pnpm: `backend/` (Node.js + TypeScript + Fastify + Prisma + PostgreSQL + Redis/BullMQ + Pino + Zod + Vitest), `frontend/` (React + Vite + TypeScript + React Router + TanStack Query + Tailwind), `shared/` (`@da/shared`: logger dengan redaction + `AppError`/format error, dipakai backend & signer), `signer/` (service internal Key Vault + signing, DB `da_vault` sendiri, tidak terekspos ke internet).
+- TypeScript dikunci `~6.0` (typescript-eslint belum mendukung TS 7). Paket workspace di-import sebagai source TS (`exports` → `src/index.ts`), tanpa build step.
+- Selalu pakai `createLogger` dari `@da/shared` dan lempar `AppError(code, ...)`. Jangan pakai `console.*` (lint error).
 - Role: `SUPER_ADMIN, ADMIN, ANALYST, REVIEWER, AUDITOR`.
 - Integrasi chain melalui interface `ChainAdapter`. Implementasi pertama: EVM (viem) di testnet Sepolia.
 
 ## Perintah
 
-<!-- Isi/perbarui setelah Fase 1 selesai -->
-- Install: `pnpm install`
-- Infra lokal: `docker compose up -d`
-- Dev: `pnpm dev`
-- Test: `pnpm test`
-- Lint & typecheck: `pnpm lint && pnpm typecheck`
-- Migrasi DB: `pnpm --filter backend prisma migrate dev`
+- Install: `pnpm install` (build script dependency harus diizinkan di `allowBuilds` pada `pnpm-workspace.yaml`)
+- Infra lokal: `docker compose up -d` (Postgres: DB `digital_archaeology` user `da`, DB `da_vault` user `da_vault`; Redis)
+- Dev (backend :3000 + frontend :5173): `pnpm dev`
+- Test semua: `pnpm test` · satu package: `pnpm --filter backend test`
+- Lint, typecheck, format: `pnpm lint`, `pnpm typecheck`, `pnpm format`
+- Migrasi DB (mulai Fase 2): `pnpm --filter backend exec prisma migrate dev`
 
 ## Cara kerja
 

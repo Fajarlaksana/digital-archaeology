@@ -10,7 +10,7 @@ Panduan teknis untuk developer: setup lokal, struktur folder, konvensi, dan test
 |------|-------|-----|
 | Git | terbaru | `git --version` |
 | Node.js | LTS aktif (≥ 22) | `node -v` |
-| pnpm | ≥ 9 | `pnpm -v` (install: `corepack enable`) |
+| pnpm | 12.x (dikunci di `packageManager`) | `pnpm -v` (install: `corepack enable`) |
 | Docker Desktop | terbaru | `docker compose version` |
 | Wallet browser | MetaMask / Rabby (untuk testnet) | — |
 | Editor | VS Code + ESLint + Prettier + Prisma extension | — |
@@ -21,21 +21,27 @@ Akun eksternal (gratis untuk testnet):
 - Harga: CoinGecko (opsional key)
 - Faucet Sepolia untuk mengisi wallet testnet
 
-## 2. Setup lokal (berlaku setelah Fase 1)
+## 2. Setup lokal
 
 ```bash
 git clone <repo> && cd digital-archaeology
 corepack enable
 pnpm install
-cp .env.example .env            # isi nilai RPC_URL, EXPLORER_API_KEY, dst.
-docker compose up -d            # PostgreSQL + Redis
-pnpm --filter backend prisma migrate dev
-pnpm --filter backend prisma db seed
+cp .env.example .env            # nilai default sudah cukup untuk dev lokal
+docker compose up -d            # PostgreSQL (2 DB) + Redis, port hanya di 127.0.0.1
 pnpm dev                        # backend + frontend
 ```
 
-- Backend: `http://localhost:3000` (cek `GET /health`)
-- Frontend: `http://localhost:5173`
+Mulai Fase 2 ditambah:
+
+```bash
+pnpm --filter backend exec prisma migrate dev
+pnpm --filter backend exec prisma db seed
+```
+
+- Backend: `http://127.0.0.1:3000` (cek `GET /health`, `/health/database`, `/health/rpc`)
+- Frontend: `http://127.0.0.1:5173` (Vite mem-proxy `/api` dan `/health` ke backend)
+- Reset database lokal (hapus semua data): `docker compose down -v`, lalu `docker compose up -d`. Script `docker/postgres/init` hanya jalan saat volume pertama kali dibuat.
 - Signer (internal, mulai Fase 7): `http://127.0.0.1:4000`. Jangan membuka port ini ke jaringan luar.
 
 ## 3. Struktur folder
@@ -79,6 +85,9 @@ digital-archaeology/
 │   │   └── server.ts
 │   ├── tests/
 │   └── package.json
+├── shared/                  # @da/shared — logger (redaction) + AppError/format error
+│   ├── src/
+│   └── tests/
 ├── frontend/
 │   ├── src/
 │   │   ├── pages/           # Dashboard, Networks, Addresses, Scans, Key Vault, Signing, ...
@@ -88,6 +97,7 @@ digital-archaeology/
 │   │   └── utils/
 │   └── package.json
 ├── docs/
+├── docker/postgres/init/    # membuat DB digital_archaeology + da_vault dengan user terpisah
 ├── docker-compose.yml
 ├── pnpm-workspace.yaml
 ├── .env.example
@@ -162,10 +172,10 @@ const sendable = parseFloat(x) - fee
 
 | Jenis | Lokasi | Jalankan | Catatan |
 |-------|--------|----------|---------|
-| Unit | `backend/tests/unit` | `pnpm test` | Wajib untuk `domain/`, tanpa jaringan |
-| Integration (DB) | `backend/tests/integration` | `pnpm test:int` | Pakai DB test terpisah |
+| Unit | `backend/tests/unit`, `shared/tests` | `pnpm test` | Wajib untuk `domain/`, tanpa jaringan |
+| Integration (HTTP/DB) | `backend/tests/integration` | `pnpm test` | HTTP lewat `app.inject()`; DB test terpisah mulai Fase 2 |
 | Integration (chain) | `backend/tests/integration/chain` | `pnpm test:chain` | Butuh env Sepolia, di-skip jika kosong |
-| Frontend | `frontend/src/**/*.test.tsx` | `pnpm --filter frontend test` | Komponen kritis (Recovery, Signing) |
+| Frontend | `frontend/src/**/*.test.tsx` | `pnpm --filter frontend test` | Testing Library + jsdom; komponen kritis (Recovery, Signing) |
 | E2E | — | Fase 11+ | Manual checklist dulu, Playwright opsional |
 
 Test keamanan yang wajib ada sejak awal:
