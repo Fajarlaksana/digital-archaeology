@@ -2,7 +2,7 @@
 
 Setiap keputusan penting dicatat di sini agar alasannya tidak hilang. Status yang dipakai: **Proposed** (usulan), **Accepted** (diterima), **Superseded** (diganti oleh ADR lain).
 
-Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. Semua ADR-001 s/d ADR-009 sudah Accepted per 2026-10-01.
+Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. Semua ADR-001 s/d ADR-011 sudah Accepted.
 
 ---
 
@@ -88,6 +88,30 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. Semua ADR-001 s/d
   4. Rate limit, misalnya maksimal 3 reveal per jam.
   5. Fitur bisa dimatikan total lewat env `KEY_REVEAL_ENABLED=false`.
 - **Catatan:** ini satu-satunya alur yang mengirim private key ke browser. Setiap reveal memperbesar risiko kebocoran (screenshot, malware di PC super admin). Disarankan dipakai seperlunya saja dan dimatikan di produksi jika tidak dibutuhkan.
+
+## ADR-010 — Konvensi skema database (Fase 2)
+- **Status:** Accepted
+- **Tanggal:** 2026-10-02
+- **Keputusan:**
+  1. **Aturan penting dijaga juga di level database**, tidak hanya di kode aplikasi. Bentuknya CHECK constraint, partial unique index, dan trigger yang ditulis manual di migrasi `20261002000000_init`:
+     - `audit_logs` tidak bisa di-UPDATE, DELETE, maupun TRUNCATE.
+     - `owner_reference` tidak boleh kosong.
+     - Jumlah aset tidak boleh negatif.
+     - Satu network hanya punya satu aset native.
+     - Penyetuju approval harus berbeda dari pengajunya.
+  2. Tabel `authorizations` (SA 5.5) sekaligus menyimpan metadata dokumen otorisasi (`document_sha256`, `document_path`). Rencana tabel terpisah `authorization_documents` dibatalkan.
+  3. URL RPC **tidak** disimpan di DB, karena biasanya mengandung API key. Tabel `networks.rpc_url_env` hanya menyimpan **nama** env var-nya (misalnya `SEPOLIA_RPC_URL`).
+  4. Prisma 7: client di-generate ke `backend/src/generated/prisma` (tidak di-commit, dibuat ulang saat `pnpm install`), koneksi lewat `@prisma/adapter-pg`, dan konfigurasinya di `backend/prisma.config.ts` yang membaca `.env` root.
+  5. Repository mengonversi `Decimal` ↔ `bigint` di batas lapisan (`repositories/amount.ts`), jadi service dan domain hanya melihat `bigint`.
+  6. Test DB memakai database terpisah `<nama>_test` yang di-reset (`prisma migrate reset`) setiap kali test jalan. Setup test menolak me-reset database yang namanya tidak berakhiran `_test`.
+- **Alasan:** pertahanan berlapis. Bug di aplikasi atau akun DB yang bocor tetap tidak bisa melanggar aturan inti.
+
+## ADR-011 — Database dev: PostgreSQL native (sementara)
+- **Status:** Accepted
+- **Tanggal:** 2026-10-02
+- **Konteks:** Docker Desktop di mesin dev gagal start. PostgreSQL 16 (port 5433) dan 18 (port 5432) sudah terpasang native.
+- **Keputusan:** dev memakai PostgreSQL **16 native di port 5433**. Setup DB dilakukan dengan `scripts/db/native-setup.sql`. Docker tetap didukung, dan port host-nya bisa diatur lewat `POSTGRES_HOST_PORT` karena 5432 sudah terpakai.
+- **Catatan keamanan:** instance native mendengarkan di `0.0.0.0`. Pastikan `pg_hba.conf` hanya mengizinkan `127.0.0.1/::1`, karena DB vault (`da_vault`) juga akan ada di sini.
 
 ---
 

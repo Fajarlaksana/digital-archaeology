@@ -7,3 +7,5 @@ packages:
 # Packages allowed to run install scripts (pnpm blocks all others by default).
 allowBuilds:
   esbuild: true
+  '@prisma/engines': true
+  prisma: true

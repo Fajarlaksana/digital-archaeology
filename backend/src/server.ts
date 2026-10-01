@@ -1,7 +1,7 @@
 import { createLogger } from '@da/shared'
 import { buildApp } from './app'
 import { loadEnvFile, parseEnv, type Env } from './config/env'
-import { createDatabase } from './lib/db'
+import { checkDatabase, createPrismaClient } from './lib/prisma'
 
 loadEnvFile()
 
@@ -14,8 +14,8 @@ try {
 }
 
 const logger = createLogger({ name: 'backend', level: env.LOG_LEVEL })
-const db = createDatabase(env.DATABASE_URL, logger)
-const app = buildApp({ env, logger, checkDatabase: db.check })
+const db = createPrismaClient(env.DATABASE_URL)
+const app = buildApp({ env, logger, checkDatabase: () => checkDatabase(db) })
 
 if (env.NETWORK_MODE === 'mainnet') {
   logger.warn('NETWORK_MODE=mainnet — real assets are at stake')
@@ -24,7 +24,7 @@ if (env.NETWORK_MODE === 'mainnet') {
 async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, 'SHUTDOWN')
   await app.close()
-  await db.close()
+  await db.$disconnect()
   process.exit(0)
 }
 

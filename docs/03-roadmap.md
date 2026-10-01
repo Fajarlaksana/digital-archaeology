@@ -56,14 +56,18 @@ M4 Production     : F12 → F13 → F14
 
 **Tujuan:** skema DB final versi MVP (SA bagian 5 + revisi di 02-analysis bagian 2.2–2.3).
 
-- [ ] Prisma schema: `networks, assets, addresses, balances, scan_results, scans, price_snapshots, users, user_roles, ownership_challenges, authorization_documents, destinations, approvals, transactions, audit_logs`
-- [ ] Tabel vault **tidak** ada di schema ini (milik `signer/`, Fase 7), dan schema aplikasi tidak punya kolom key/seed/passphrase
-- [ ] Kolom jumlah memakai `Decimal @db.Decimal(78,0)` (base unit)
-- [ ] Status dipecah per dimensi (enum Prisma)
-- [ ] `addresses.owner_reference` NOT NULL, unique `(network_id, address)`
-- [ ] Migrasi awal + seed: network Sepolia, aset ETH + 1–2 token ERC-20 testnet, user admin dev
-- [ ] Repository layer + helper `toBaseUnit` / `fromBaseUnit` (bigint) beserta unit test
-- [ ] Audit log: service insert-only (tidak ada method update/delete)
+- [x] Prisma schema (15 tabel): `networks, assets, price_snapshots, addresses, balances, scans, scan_results, users, user_roles, authorizations, ownership_challenges, destinations, approvals, transactions, audit_logs`. Tabel `authorizations` (SA 5.5) sekaligus menyimpan metadata dokumen otorisasi, menggantikan rencana tabel `authorization_documents`
+- [x] Tabel vault **tidak** ada di schema ini (milik `signer/`, Fase 7), dan schema aplikasi tidak punya kolom key/seed/passphrase
+- [x] Kolom jumlah memakai `Decimal @db.Decimal(78,0)` (base unit)
+- [x] Status dipecah per dimensi (enum Prisma)
+- [x] `addresses.owner_reference` NOT NULL + CHECK tidak kosong, unique `(network_id, address)`
+- [x] Constraint DB tambahan: jumlah ≥ 0, satu aset native per network, approval `decided_by ≠ requested_by`, subject approval konsisten
+- [x] Migrasi awal (`20261002000000_init`) + seed: network Sepolia, ETH, USDC & LINK testnet
+- [ ] ~~User admin dev di seed~~ → dipindah ke Fase 3 (butuh argon2; SUPER_ADMIN hanya via CLI)
+- [x] Helper `toBaseUnit` / `fromBaseUnit` / `parseBaseUnits` (bigint) + jembatan `toDbAmount`/`fromDbAmount` + unit test
+- [x] Repository: audit-log, network, address (+ balance). Repository entitas lain dibuat di fase yang memakainya
+- [x] Audit log insert-only: repository tanpa update/delete **dan** trigger DB yang menolak UPDATE/DELETE/TRUNCATE; metadata otomatis di-redact
+- [ ] **Terapkan migrasi + seed ke database & jalankan test DB** (menunggu `scripts/db/native-setup.sql` dijalankan)
 
 **DoD:** migrasi bersih dari nol, seed jalan, unit test konversi jumlah lulus (termasuk edge case 18 desimal).
 
@@ -75,6 +79,7 @@ M4 Production     : F12 → F13 → F14
 - [ ] Password hashing (argon2), session/JWT di httpOnly cookie, session timeout
 - [ ] Rate limit pada endpoint login
 - [ ] Role: `SUPER_ADMIN, ADMIN, ANALYST, REVIEWER, AUDITOR` dengan permission sesuai SA 8.2 + ADR-003
+- [ ] Seed user dev (ADMIN/ANALYST/REVIEWER/AUDITOR, password dari env), dipindahkan dari Fase 2
 - [ ] SUPER_ADMIN hanya bisa dibuat lewat CLI/seed di server (`pnpm --filter backend create-super-admin`), tidak bisa lewat UI
 - [ ] Middleware `requirePermission()` + `requireRecentAuth()` (re-auth untuk aksi sensitif)
 - [ ] **MFA TOTP wajib** untuk SUPER_ADMIN & REVIEWER (login ditolak jika MFA belum disetel)
@@ -253,3 +258,4 @@ M4 Production     : F12 → F13 → F14
 | 2026-10-01 | F0 | ADR-003/008/009: key dipegang SUPER_ADMIN di Key Vault terenkripsi |
 | 2026-10-01 | F0 | ADR-001/002/004–007 Accepted: TypeScript stack, EVM Sepolia, internal use, >3 operator |
 | 2026-10-01 | F1 | Monorepo + shared/backend/frontend, 49 test hijau. Pending: verifikasi Docker (Docker Desktop gagal start) |
+| 2026-10-02 | F2 | Schema + migrasi + seed + repository, 107 test hijau (12 test DB di-skip). Dev DB: PostgreSQL 16 native di port 5433 (pengganti Docker) |

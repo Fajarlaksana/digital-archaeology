@@ -58,7 +58,7 @@ review_flag           : boolean (REQUIRES_REVIEW)
 | `users` | Akun login (password hash, MFA secret terenkripsi, status) |
 | `user_roles` | Relasi user ↔ role (satu user bisa punya beberapa role) |
 | `ownership_challenges` | Pesan challenge: `nonce`, `message`, `expires_at`, `used_at`, `signature`, `result` |
-| `authorization_documents` | Bukti mandat/kontrak: tipe, referensi, hash file, lokasi penyimpanan terenkripsi |
+| ~~`authorization_documents`~~ | Digabung ke tabel `authorizations` (ADR-010): tipe, referensi, hash file, lokasi file terenkripsi |
 | `destinations` | Whitelist wallet tujuan: address, network, label, `approved_by`, `approved_at` |
 | `approvals` | Persetujuan transaksi/destinasi: `requested_by`, `approved_by`, keputusan, alasan |
 | `scan_results` | Snapshot hasil per address per scan (histori), bukan hanya overwrite di `addresses` |

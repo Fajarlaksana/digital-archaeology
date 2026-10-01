@@ -5,6 +5,9 @@ build/
 coverage/
 *.tsbuildinfo
 
+# Generated Prisma client (rebuilt by `pnpm install` / `pnpm --filter backend db:generate`)
+backend/src/generated/
+
 # Environment & secrets — NEVER commit
 .env
 .env.*

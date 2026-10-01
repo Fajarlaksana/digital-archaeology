@@ -1,0 +1,517 @@
+// Application database (digital_archaeology).
+// Source: system_analysis section 5 + docs/02-project-analysis.md sections 2.2–2.3.
+//
+// Hard rules (CLAUDE.md):
+// - NO column for private keys, seeds or passphrases. Vault tables live in signer/ (DB da_vault).
+// - Asset amounts are base units (wei/satoshi) in Decimal(78,0). Never Float.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────────── Enums ─────────────────────────────
+
+enum ChainType {
+  EVM
+  BITCOIN
+}
+
+enum NetworkStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum ActivityStatus {
+  UNKNOWN
+  ACTIVE
+  INACTIVE
+}
+
+enum BalanceStatus {
+  UNKNOWN
+  EMPTY
+  HAS_BALANCE
+}
+
+enum AuthorizationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+enum RecoveryStatus {
+  NONE
+  NOT_ELIGIBLE
+  NOT_ECONOMIC
+  READY
+  IN_PROGRESS
+  TRANSFERRED
+}
+
+enum ScanStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  ANALYST
+  REVIEWER
+  AUDITOR
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+  LOCKED
+}
+
+enum AuthorizationType {
+  SELF
+  MANDATE
+  CONTRACT
+}
+
+enum ChallengeMethod {
+  VAULT
+  WALLET
+  MANUAL
+}
+
+enum ChallengeResult {
+  PENDING
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+enum DestinationStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  DISABLED
+}
+
+enum ApprovalSubject {
+  DESTINATION
+  TRANSACTION
+}
+
+enum ApprovalDecision {
+  APPROVED
+  REJECTED
+}
+
+enum TransactionStatus {
+  CREATED
+  APPROVED
+  REJECTED
+  SIGNED
+  BROADCASTED
+  PENDING
+  CONFIRMED
+  FAILED
+  CANCELLED
+}
+
+enum AuditResult {
+  SUCCESS
+  FAILURE
+  DENIED
+}
+
+// ──────────────────────── Networks & assets ────────────────────────
+
+model Network {
+  id          String        @id @default(uuid()) @db.Uuid
+  /// Stable machine name, e.g. "sepolia".
+  name        String        @unique
+  displayName String        @map("display_name")
+  chainType   ChainType     @default(EVM) @map("chain_type")
+  /// EVM chain id; null for non-EVM chains.
+  chainId     Int?          @map("chain_id")
+  isTestnet   Boolean       @map("is_testnet")
+  /// NAME of the env var holding the RPC URL (URLs often embed API keys, so they stay out of the DB).
+  rpcUrlEnv   String?       @map("rpc_url_env")
+  explorerUrl String?       @map("explorer_url")
+  status      NetworkStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  assets       Asset[]
+  addresses    Address[]
+  scans        Scan[]
+  destinations Destination[]
+  transactions Transaction[]
+
+  @@unique([chainType, chainId])
+  @@map("networks")
+}
+
+model Asset {
+  id              String   @id @default(uuid()) @db.Uuid
+  networkId       String   @map("network_id") @db.Uuid
+  /// Null for the network's native asset (ETH, BTC, ...).
+  contractAddress String?  @map("contract_address")
+  isNative        Boolean  @default(false) @map("is_native")
+  symbol          String
+  name            String
+  decimals        Int
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  network        Network         @relation(fields: [networkId], references: [id])
+  balances       Balance[]
+  priceSnapshots PriceSnapshot[]
+  transactions   Transaction[]
+
+  @@unique([networkId, contractAddress])
+  @@map("assets")
+}
+
+model PriceSnapshot {
+  id           String   @id @default(uuid()) @db.Uuid
+  assetId      String   @map("asset_id") @db.Uuid
+  fiatCurrency String   @map("fiat_currency")
+  /// Price of ONE whole unit of the asset (not base unit).
+  price        Decimal  @db.Decimal(38, 18)
+  source       String
+  pricedAt     DateTime @map("priced_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  asset    Asset     @relation(fields: [assetId], references: [id])
+  balances Balance[]
+
+  @@index([assetId, fiatCurrency, pricedAt])
+  @@map("price_snapshots")
+}
+
+// ─────────────────────────── Addresses ───────────────────────────
+
+model Address {
+  id                  String              @id @default(uuid()) @db.Uuid
+  networkId           String              @map("network_id") @db.Uuid
+  /// Stored in canonical form (EIP-55 checksum for EVM).
+  address             String
+  label               String?
+  /// Who the address belongs to / under which mandate. Required (CLAUDE.md rule 7).
+  ownerReference      String              @map("owner_reference")
+  activityStatus      ActivityStatus      @default(UNKNOWN) @map("activity_status")
+  balanceStatus       BalanceStatus       @default(UNKNOWN) @map("balance_status")
+  authorizationStatus AuthorizationStatus @default(UNVERIFIED) @map("authorization_status")
+  recoveryStatus      RecoveryStatus      @default(NONE) @map("recovery_status")
+  recoveryReason      String?             @map("recovery_reason")
+  reviewFlag          Boolean             @default(false) @map("review_flag")
+  reviewNote          String?             @map("review_note")
+  lastActivityAt      DateTime?           @map("last_activity_at")
+  lastIncomingAt      DateTime?           @map("last_incoming_at")
+  lastOutgoingAt      DateTime?           @map("last_outgoing_at")
+  inactiveDays        Int?                @map("inactive_days")
+  lastScannedAt       DateTime?           @map("last_scanned_at")
+  createdById         String?             @map("created_by") @db.Uuid
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+
+  network        Network              @relation(fields: [networkId], references: [id])
+  createdBy      User?                @relation("AddressCreatedBy", fields: [createdById], references: [id])
+  balances       Balance[]
+  scanResults    ScanResult[]
+  authorizations Authorization[]
+  challenges     OwnershipChallenge[]
+  transactions   Transaction[]
+
+  @@unique([networkId, address])
+  @@index([activityStatus])
+  @@index([recoveryStatus])
+  @@map("addresses")
+}
+
+model Balance {
+  id              String   @id @default(uuid()) @db.Uuid
+  addressId       String   @map("address_id") @db.Uuid
+  assetId         String   @map("asset_id") @db.Uuid
+  /// Base units (wei, satoshi, token base unit).
+  quantity        Decimal  @db.Decimal(78, 0)
+  fiatValue       Decimal? @map("fiat_value") @db.Decimal(38, 8)
+  priceSnapshotId String?  @map("price_snapshot_id") @db.Uuid
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  address       Address        @relation(fields: [addressId], references: [id], onDelete: Cascade)
+  asset         Asset          @relation(fields: [assetId], references: [id])
+  priceSnapshot PriceSnapshot? @relation(fields: [priceSnapshotId], references: [id])
+
+  @@unique([addressId, assetId])
+  @@map("balances")
+}
+
+// ───────────────────────────── Scans ─────────────────────────────
+
+model Scan {
+  id             String     @id @default(uuid()) @db.Uuid
+  networkId      String     @map("network_id") @db.Uuid
+  status         ScanStatus @default(QUEUED)
+  thresholdDays  Int        @map("threshold_days")
+  /// Base units of the native asset; null = no bound.
+  minimumBalance Decimal?   @map("minimum_balance") @db.Decimal(78, 0)
+  maximumBalance Decimal?   @map("maximum_balance") @db.Decimal(78, 0)
+  totalAddresses Int        @default(0) @map("total_addresses")
+  totalInactive  Int        @default(0) @map("total_inactive")
+  totalFailed    Int        @default(0) @map("total_failed")
+  errorMessage   String?    @map("error_message")
+  createdById    String?    @map("created_by") @db.Uuid
+  startedAt      DateTime?  @map("started_at")
+  completedAt    DateTime?  @map("completed_at")
+  createdAt      DateTime   @default(now()) @map("created_at")
+
+  network   Network      @relation(fields: [networkId], references: [id])
+  createdBy User?        @relation("ScanCreatedBy", fields: [createdById], references: [id])
+  results   ScanResult[]
+
+  @@index([status])
+  @@map("scans")
+}
+
+/// Per-address snapshot of one scan run (history; addresses holds only the latest state).
+model ScanResult {
+  id              String         @id @default(uuid()) @db.Uuid
+  scanId          String         @map("scan_id") @db.Uuid
+  addressId       String         @map("address_id") @db.Uuid
+  activityStatus  ActivityStatus @map("activity_status")
+  balanceStatus   BalanceStatus  @map("balance_status")
+  lastActivityAt  DateTime?      @map("last_activity_at")
+  lastIncomingAt  DateTime?      @map("last_incoming_at")
+  lastOutgoingAt  DateTime?      @map("last_outgoing_at")
+  inactiveDays    Int?           @map("inactive_days")
+  incomingTxCount Int?           @map("incoming_tx_count")
+  outgoingTxCount Int?           @map("outgoing_tx_count")
+  nonce           Int?
+  reviewFlag      Boolean        @default(false) @map("review_flag")
+  /// [{ assetId, quantity }] with quantity as a base-unit STRING.
+  balances        Json?
+  errorCode       String?        @map("error_code")
+  createdAt       DateTime       @default(now()) @map("created_at")
+
+  scan    Scan    @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  address Address @relation(fields: [addressId], references: [id], onDelete: Cascade)
+
+  @@unique([scanId, addressId])
+  @@map("scan_results")
+}
+
+// ──────────────────────── Users & roles ────────────────────────
+
+model User {
+  id                 String     @id @default(uuid()) @db.Uuid
+  email              String     @unique
+  name               String
+  passwordHash       String     @map("password_hash")
+  /// TOTP secret, encrypted at the application layer (Phase 3).
+  mfaSecretEncrypted String?    @map("mfa_secret_encrypted")
+  mfaEnabled         Boolean    @default(false) @map("mfa_enabled")
+  status             UserStatus @default(ACTIVE)
+  failedLoginCount   Int        @default(0) @map("failed_login_count")
+  lastLoginAt        DateTime?  @map("last_login_at")
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
+
+  roles                 UserRole[]           @relation("UserRoles")
+  grantedRoles          UserRole[]           @relation("RoleGrantedBy")
+  createdAddresses      Address[]            @relation("AddressCreatedBy")
+  createdScans          Scan[]               @relation("ScanCreatedBy")
+  createdAuthorizations Authorization[]      @relation("AuthorizationCreatedBy")
+  createdChallenges     OwnershipChallenge[] @relation("ChallengeCreatedBy")
+  createdDestinations   Destination[]        @relation("DestinationCreatedBy")
+  requestedApprovals    Approval[]           @relation("ApprovalRequestedBy")
+  decidedApprovals      Approval[]           @relation("ApprovalDecidedBy")
+  createdTransactions   Transaction[]        @relation("TransactionCreatedBy")
+  auditLogs             AuditLog[]
+
+  @@map("users")
+}
+
+model UserRole {
+  userId      String   @map("user_id") @db.Uuid
+  role        Role
+  grantedById String?  @map("granted_by") @db.Uuid
+  grantedAt   DateTime @default(now()) @map("granted_at")
+
+  user      User  @relation("UserRoles", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy User? @relation("RoleGrantedBy", fields: [grantedById], references: [id])
+
+  @@id([userId, role])
+  @@map("user_roles")
+}
+
+// ─────────────────── Authorization & ownership ───────────────────
+
+/// Legal basis for handling an address (SA 5.5) plus optional supporting document metadata.
+model Authorization {
+  id                 String              @id @default(uuid()) @db.Uuid
+  addressId          String              @map("address_id") @db.Uuid
+  type               AuthorizationType
+  /// Contract number, case id, or "SELF".
+  reference          String
+  /// SHA-256 of the supporting document; the file itself is stored encrypted outside the DB.
+  documentSha256     String?             @map("document_sha256")
+  documentPath       String?             @map("document_path")
+  verificationStatus AuthorizationStatus @default(UNVERIFIED) @map("verification_status")
+  verifiedAt         DateTime?           @map("verified_at")
+  expiresAt          DateTime?           @map("expires_at")
+  createdById        String?             @map("created_by") @db.Uuid
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+
+  address    Address              @relation(fields: [addressId], references: [id], onDelete: Cascade)
+  createdBy  User?                @relation("AuthorizationCreatedBy", fields: [createdById], references: [id])
+  challenges OwnershipChallenge[]
+
+  @@map("authorizations")
+}
+
+/// Signed-message challenge (docs/02 §2.4). Single use: used_at is set on first verification attempt.
+model OwnershipChallenge {
+  id              String           @id @default(uuid()) @db.Uuid
+  addressId       String           @map("address_id") @db.Uuid
+  authorizationId String?          @map("authorization_id") @db.Uuid
+  nonce           String           @unique
+  message         String
+  method          ChallengeMethod?
+  issuedAt        DateTime         @default(now()) @map("issued_at")
+  expiresAt       DateTime         @map("expires_at")
+  usedAt          DateTime?        @map("used_at")
+  signature       String?
+  result          ChallengeResult  @default(PENDING)
+  createdById     String?          @map("created_by") @db.Uuid
+
+  address       Address        @relation(fields: [addressId], references: [id], onDelete: Cascade)
+  authorization Authorization? @relation(fields: [authorizationId], references: [id])
+  createdBy     User?          @relation("ChallengeCreatedBy", fields: [createdById], references: [id])
+
+  @@index([addressId])
+  @@map("ownership_challenges")
+}
+
+// ─────────────────── Destinations & approvals ───────────────────
+
+model Destination {
+  id          String            @id @default(uuid()) @db.Uuid
+  networkId   String            @map("network_id") @db.Uuid
+  address     String
+  label       String
+  status      DestinationStatus @default(PENDING_APPROVAL)
+  createdById String?           @map("created_by") @db.Uuid
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  network      Network       @relation(fields: [networkId], references: [id])
+  createdBy    User?         @relation("DestinationCreatedBy", fields: [createdById], references: [id])
+  approvals    Approval[]
+  transactions Transaction[]
+
+  @@unique([networkId, address])
+  @@map("destinations")
+}
+
+/// Maker-checker record (ADR-007). decided_by must differ from requested_by — enforced in the service layer.
+model Approval {
+  id            String            @id @default(uuid()) @db.Uuid
+  subjectType   ApprovalSubject   @map("subject_type")
+  destinationId String?           @map("destination_id") @db.Uuid
+  transactionId String?           @map("transaction_id") @db.Uuid
+  requestedById String            @map("requested_by") @db.Uuid
+  decidedById   String?           @map("decided_by") @db.Uuid
+  decision      ApprovalDecision?
+  reason        String?
+  decidedAt     DateTime?         @map("decided_at")
+  expiresAt     DateTime?         @map("expires_at")
+  createdAt     DateTime          @default(now()) @map("created_at")
+
+  destination Destination? @relation(fields: [destinationId], references: [id])
+  transaction Transaction? @relation(fields: [transactionId], references: [id])
+  requestedBy User         @relation("ApprovalRequestedBy", fields: [requestedById], references: [id])
+  decidedBy   User?        @relation("ApprovalDecidedBy", fields: [decidedById], references: [id])
+
+  @@index([destinationId])
+  @@index([transactionId])
+  @@map("approvals")
+}
+
+// ───────────────────────── Transactions ─────────────────────────
+
+model Transaction {
+  id              String            @id @default(uuid()) @db.Uuid
+  addressId       String            @map("address_id") @db.Uuid
+  networkId       String            @map("network_id") @db.Uuid
+  assetId         String            @map("asset_id") @db.Uuid
+  destinationId   String            @map("destination_id") @db.Uuid
+  status          TransactionStatus @default(CREATED)
+  /// Base units.
+  amount          Decimal           @db.Decimal(78, 0)
+  /// Maximum fee approved, in native-asset base units.
+  networkFee      Decimal?          @map("network_fee") @db.Decimal(78, 0)
+  estimatedValue  Decimal?          @map("estimated_value") @db.Decimal(38, 8)
+  nonce           Int?
+  /// Canonical JSON of the unsigned tx exactly as approved.
+  unsignedPayload Json?             @map("unsigned_payload")
+  unsignedHash    String?           @map("unsigned_hash")
+  /// Signed raw tx (public once broadcast). Never logged.
+  signedPayload   String?           @map("signed_payload")
+  txHash          String?           @unique @map("tx_hash")
+  confirmations   Int               @default(0)
+  failureReason   String?           @map("failure_reason")
+  createdById     String            @map("created_by") @db.Uuid
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  broadcastAt     DateTime?         @map("broadcast_at")
+  confirmedAt     DateTime?         @map("confirmed_at")
+
+  address     Address     @relation(fields: [addressId], references: [id])
+  network     Network     @relation(fields: [networkId], references: [id])
+  asset       Asset       @relation(fields: [assetId], references: [id])
+  destination Destination @relation(fields: [destinationId], references: [id])
+  createdBy   User        @relation("TransactionCreatedBy", fields: [createdById], references: [id])
+  approvals   Approval[]
+
+  @@index([status])
+  @@map("transactions")
+}
+
+// ─────────────────────────── Audit ───────────────────────────
+
+/// Append-only. UPDATE / DELETE / TRUNCATE are blocked by a database trigger (see migration).
+/// metadata must already be redacted — never keys, seeds, passphrases, passwords or tokens.
+model AuditLog {
+  id           String      @id @default(uuid()) @db.Uuid
+  /// Monotonic order, used for the optional hash chain (Phase 12).
+  sequence     BigInt      @unique @default(autoincrement())
+  userId       String?     @map("user_id") @db.Uuid
+  action       String
+  resourceType String?     @map("resource_type")
+  resourceId   String?     @map("resource_id")
+  result       AuditResult
+  ipAddress    String?     @map("ip_address")
+  userAgent    String?     @map("user_agent")
+  requestId    String?     @map("request_id")
+  metadata     Json?
+  prevHash     String?     @map("prev_hash")
+  hash         String?
+  createdAt    DateTime    @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([resourceType, resourceId])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}

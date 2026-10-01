@@ -27,16 +27,15 @@ Akun eksternal (gratis untuk testnet):
 git clone <repo> && cd digital-archaeology
 corepack enable
 pnpm install
-cp .env.example .env            # nilai default sudah cukup untuk dev lokal
-docker compose up -d            # PostgreSQL (2 DB) + Redis, port hanya di 127.0.0.1
+cp .env.example .env            # sesuaikan port DATABASE_URL dengan Postgres yang dipakai
+
+# Pilih SATU:
+docker compose up -d            # (a) Docker: PostgreSQL (2 DB) + Redis, port hanya di 127.0.0.1
+psql -U postgres -h 127.0.0.1 -p 5433 -f scripts/db/native-setup.sql   # (b) PostgreSQL native
+
+pnpm --filter backend db:deploy # terapkan migrasi
+pnpm --filter backend db:seed   # data awal (Sepolia, ETH, USDC, LINK)
 pnpm dev                        # backend + frontend
-```
-
-Mulai Fase 2 ditambah:
-
-```bash
-pnpm --filter backend exec prisma migrate dev
-pnpm --filter backend exec prisma db seed
 ```
 
 - Backend: `http://127.0.0.1:3000` (cek `GET /health`, `/health/database`, `/health/rpc`)

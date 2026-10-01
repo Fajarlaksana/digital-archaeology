@@ -32,11 +32,13 @@ Kebutuhan lengkap: `system_analysis_digital_archaeology.md`. Revisi & keputusan:
 ## Perintah
 
 - Install: `pnpm install` (build script dependency harus diizinkan di `allowBuilds` pada `pnpm-workspace.yaml`)
-- Infra lokal: `docker compose up -d` (Postgres: DB `digital_archaeology` user `da`, DB `da_vault` user `da_vault`; Redis)
+- Infra lokal: PostgreSQL 16 native di port **5433** (setup sekali: `psql -U postgres -h 127.0.0.1 -p 5433 -f scripts/db/native-setup.sql`), atau `docker compose up -d`. DB `digital_archaeology` (user `da`), `da_vault` (user `da_vault`)
 - Dev (backend :3000 + frontend :5173): `pnpm dev`
 - Test semua: `pnpm test` · satu package: `pnpm --filter backend test`
 - Lint, typecheck, format: `pnpm lint`, `pnpm typecheck`, `pnpm format`
-- Migrasi DB (mulai Fase 2): `pnpm --filter backend exec prisma migrate dev`
+- DB: `pnpm --filter backend db:migrate` (buat/terapkan migrasi), `db:deploy`, `db:seed`, `db:status`, `db:generate`
+- Test DB otomatis memakai `<db>_test` (di-reset tiap run) dan di-skip jika DB tidak terjangkau
+- Constraint/trigger yang tidak bisa diekspresikan Prisma ditulis manual di `migration.sql` (lihat ADR-010). Jangan dihapus saat membuat migrasi baru
 
 ## Cara kerja
 
