@@ -1,6 +1,7 @@
 import { AppError, type Logger } from '@da/shared'
 import type { ChainClientFactory, ChainClients } from '../chains/clients'
 import { analyzeActivity } from '../domain/activity-analyzer'
+import { displayFiat } from '../domain/valuation'
 import { AmountError, fromBaseUnit, parseBaseUnits, toBaseUnit } from '../domain/money'
 import type { Asset } from '../generated/prisma/client'
 import type { AuditLogRepository } from '../repositories/audit-log.repository'
@@ -20,6 +21,8 @@ export interface PublicScan {
   id: string
   network: { id: string; name: string; displayName: string; nativeSymbol: string | null }
   status: string
+  /** MANUAL (a user) or SCHEDULED (the system scheduler). */
+  trigger: string
   thresholdDays: number
   /** Native-asset amounts in whole units (e.g. "0.01"), null = no bound. */
   minimumBalance: string | null
@@ -43,6 +46,10 @@ export interface ScanServiceDeps {
   defaultThresholdDays: number
   logger: Logger
   now: () => Date
+  /** Fiat currency for valuation display (Phase 6). */
+  fiatCurrency: string
+  /** Called after a scan finished (e.g. re-apply prices to the new balances). Errors are logged. */
+  afterScan?: (networkId: string) => Promise<void>
 }
 
 export function createScanService(deps: ScanServiceDeps) {
@@ -65,6 +72,7 @@ export function createScanService(deps: ScanServiceDeps) {
         nativeSymbol: native?.symbol ?? null,
       },
       status: scan.status,
+      trigger: scan.trigger,
       thresholdDays: scan.thresholdDays,
       minimumBalance: fmt(fromDbAmountOrNull(scan.minimumBalance)),
       maximumBalance: fmt(fromDbAmountOrNull(scan.maximumBalance)),
@@ -133,6 +141,7 @@ export function createScanService(deps: ScanServiceDeps) {
         maximumBalance,
         totalAddresses: targets.length,
         createdById: actor.user.id,
+        trigger: 'MANUAL',
       })
       await recordAction(audit, actor, meta, {
         action: 'SCAN_CREATED',
@@ -146,6 +155,59 @@ export function createScanService(deps: ScanServiceDeps) {
       })
       await deps.enqueue(scan.id)
       return toPublic(await getOrThrow(scan.id))
+    },
+
+    /**
+     * Scheduler entry point: queues a scan for every active, configured network that is not
+     * already being scanned. Recorded as a SYSTEM action (no user). Never moves assets (rule 5).
+     */
+    async startScheduledScans(): Promise<{
+      started: string[]
+      skipped: Array<{ network: string; reason: string }>
+    }> {
+      const started: string[] = []
+      const skipped: Array<{ network: string; reason: string }> = []
+      for (const network of await networks.list()) {
+        if (network.status !== 'ACTIVE') continue
+        try {
+          clientsFor(network)
+        } catch (error) {
+          skipped.push({
+            network: network.name,
+            reason: error instanceof AppError ? error.message : 'not configured',
+          })
+          continue
+        }
+        if (await scans.findActiveForNetwork(network.id)) {
+          skipped.push({ network: network.name, reason: 'a scan is already queued or running' })
+          continue
+        }
+        const targets = await scans.listTargets(network.id)
+        if (targets.length === 0) {
+          skipped.push({ network: network.name, reason: 'no addresses' })
+          continue
+        }
+        const scan = await scans.create({
+          networkId: network.id,
+          thresholdDays: deps.defaultThresholdDays,
+          minimumBalance: null,
+          maximumBalance: null,
+          totalAddresses: targets.length,
+          createdById: null,
+          trigger: 'SCHEDULED',
+        })
+        await audit.create({
+          action: 'SCAN_SCHEDULED',
+          result: 'SUCCESS',
+          resourceType: 'scan',
+          resourceId: scan.id,
+          metadata: { actor: 'SYSTEM', network: network.name, addresses: targets.length },
+        })
+        await deps.enqueue(scan.id)
+        started.push(scan.id)
+      }
+      if (skipped.length > 0) logger.warn({ skipped }, 'SCHEDULED_SCANS_SKIPPED')
+      return { started, skipped }
     },
 
     async list(page: number, pageSize: number) {
@@ -249,6 +311,20 @@ export function createScanService(deps: ScanServiceDeps) {
         quantity: r.quantity.toString(),
         formatted: fromBaseUnit(r.quantity, r.asset.decimals),
         updatedAt: r.updatedAt.toISOString(),
+        // Valuation (Phase 6): an ESTIMATE, shown with its source and time (SA 4.4 / 13).
+        ...(() => {
+          const snap = r.priceSnapshot
+          const usable =
+            snap !== null && snap.fiatCurrency === deps.fiatCurrency && r.fiatValue !== null
+          return {
+            fiatCurrency: deps.fiatCurrency,
+            fiatValue: usable ? displayFiat(r.fiatValue!) : null,
+            price: usable ? snap.price.toFixed() : null,
+            priceSource: usable ? snap.source : null,
+            pricedAt: usable ? snap.pricedAt.toISOString() : null,
+            simulated: r.asset.network.isTestnet,
+          }
+        })(),
       }))
     },
 
@@ -368,6 +444,11 @@ export function createScanService(deps: ScanServiceDeps) {
       metadata: { network: scan.network.name, ...totals },
     })
     logger.info({ scanId, ...totals }, allFailed ? 'SCAN_FAILED' : 'SCAN_COMPLETED')
+    if (deps.afterScan) {
+      await deps
+        .afterScan(scan.networkId)
+        .catch((err: unknown) => logger.error({ err, scanId }, 'AFTER_SCAN_HOOK_FAILED'))
+    }
   }
 }
 

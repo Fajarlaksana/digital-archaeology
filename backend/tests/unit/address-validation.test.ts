@@ -8,6 +8,7 @@ import {
   type ImportInputRow,
   type ImportNetwork,
 } from '../../src/domain/address-import'
+import { UTF8_BOM } from '../../src/lib/csv'
 import { parseImportCsv } from '../../src/services/address.service'
 
 // Test vectors from the EIP-55 specification.
@@ -148,7 +149,8 @@ describe('import row validation', () => {
 describe('CSV parsing', () => {
   it('reads rows with line numbers, quotes, BOM and case-insensitive headers', () => {
     const csv =
-      '﻿Address,Network,Label,Owner_Reference\n' +
+      UTF8_BOM +
+      'Address,Network,Label,Owner_Reference\n' +
       `${CHECKSUMMED[0]},sepolia,"Cold, wallet",SELF\n\n` +
       `${CHECKSUMMED[1]},sepolia,,CASE-1\n`
     expect(parseImportCsv(csv)).toEqual([

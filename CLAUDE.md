@@ -32,11 +32,13 @@ Kebutuhan lengkap: `system_analysis_digital_archaeology.md`. Revisi & keputusan:
 - Address tidak pernah dihapus, hanya diarsipkan (`archived_at`). Query untuk scan atau proses lain wajib mengecualikan address yang diarsipkan.
 - Baca blockchain hanya lewat `ChainReader` (RPC) dan `ActivityProvider` (explorer) dari `chainClients` (`backend/src/chains/clients.ts`). Inaktivitas dihitung dari transaksi KELUAR (ADR-015). Dalam test pakai `tests/integration/fake-chain.ts`, jangan memanggil jaringan sungguhan (kecuali `*.live.test.ts`).
 - Jangan pernah memasukkan URL RPC atau API key ke pesan error atau log.
+- Nilai fiat: hitung hanya dengan `domain/valuation.ts` (decimal.js), simpan sebagai string/NUMERIC, dan tampilkan dengan `formatFiat` (tanpa `Number`). Nilai testnet wajib berlabel SIMULASI dan dijumlahkan terpisah (ADR-016).
+- Export CSV wajib lewat `lib/csv.ts` (proteksi formula injection).
 
 ## Perintah
 
 - Install: `pnpm install` (build script dependency harus diizinkan di `allowBuilds` pada `pnpm-workspace.yaml`)
-- Worker scan (BullMQ) berjalan di proses backend dan butuh Redis.
+- Worker scan dan scheduler `maintenance` (harga tiap 60 menit, scan harian 02:00 WIB) berjalan di proses backend dan butuh Redis.
 - Infra lokal: `docker compose up -d`. Postgres di port host **5434** (`POSTGRES_HOST_PORT`) dan Redis 6379. DB `digital_archaeology` (user `da`), `da_vault` (user `da_vault`). Lihat ADR-013
 - Dev (backend :3000 + frontend :5173): `pnpm dev`
 - Test semua: `pnpm test` · satu package: `pnpm --filter backend test`

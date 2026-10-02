@@ -93,7 +93,14 @@ export function ScansPage() {
                     {new Date(scan.createdAt).toLocaleString('id-ID')}
                   </Link>
                 </td>
-                <td className="px-4 py-2">{scan.network.displayName}</td>
+                <td className="px-4 py-2">
+                  {scan.network.displayName}
+                  {scan.trigger === 'SCHEDULED' && (
+                    <span className="ml-2">
+                      <Badge tone="slate">terjadwal</Badge>
+                    </span>
+                  )}
+                </td>
                 <td className="px-4 py-2">
                   <ScanStatusBadge status={scan.status} />
                 </td>

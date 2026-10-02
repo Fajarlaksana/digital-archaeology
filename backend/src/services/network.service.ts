@@ -13,6 +13,8 @@ export interface PublicAsset {
   decimals: number
   isNative: boolean
   contractAddress: string | null
+  /** CoinGecko id used for valuation; null = not valued. */
+  priceId: string | null
 }
 
 export interface PublicNetwork {
@@ -38,6 +40,7 @@ export function toPublicAsset(asset: Asset): PublicAsset {
     decimals: asset.decimals,
     isNative: asset.isNative,
     contractAddress: asset.contractAddress,
+    priceId: asset.priceId,
   }
 }
 

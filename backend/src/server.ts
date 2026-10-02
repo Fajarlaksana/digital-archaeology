@@ -3,7 +3,9 @@ import { buildApp } from './app'
 import { loadEnvFile, parseEnv, type Env } from './config/env'
 import { checkDatabase, createPrismaClient } from './lib/prisma'
 import { createChainClientFactory } from './chains/clients'
+import { createMaintenanceQueue } from './jobs/maintenance-queue'
 import { createScanQueue } from './jobs/scan-queue'
+import { createCoinGeckoProvider } from './pricing/coingecko'
 import { createServices } from './services'
 
 loadEnvFile()
@@ -32,11 +34,23 @@ const services = createServices(db, {
   enqueueScan: (scanId) => scanQueue.enqueue(scanId),
   defaultThresholdDays: env.INACTIVITY_THRESHOLD_DAYS,
   logger,
+  priceProvider: createCoinGeckoProvider({ baseUrl: env.PRICE_API_URL, apiKey: env.PRICE_API_KEY }),
+  fiatCurrency: env.FIAT_CURRENCY,
+  scheduleInfo: () => maintenance.info(),
 })
 const scanQueue = createScanQueue({
   redisUrl: env.REDIS_URL,
   process: (scanId) => services.scans.process(scanId),
   logger,
+})
+const maintenance = createMaintenanceQueue({
+  redisUrl: env.REDIS_URL,
+  logger,
+  priceIntervalMinutes: env.PRICE_UPDATE_INTERVAL_MINUTES,
+  scanCron: env.SCAN_SCHEDULE_CRON,
+  timezone: env.SCHEDULER_TIMEZONE,
+  updatePrices: () => services.valuation.updatePrices(),
+  startScheduledScans: () => services.scans.startScheduledScans(),
 })
 const app = await buildApp({ env, logger, checkDatabase: () => checkDatabase(db), services })
 
@@ -48,6 +62,7 @@ async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, 'SHUTDOWN')
   await app.close()
   await scanQueue.close()
+  await maintenance.close()
   await db.$disconnect()
   process.exit(0)
 }
@@ -55,4 +70,5 @@ async function shutdown(signal: string): Promise<void> {
 process.on('SIGINT', () => void shutdown('SIGINT'))
 process.on('SIGTERM', () => void shutdown('SIGTERM'))
 
+await maintenance.start()
 await app.listen({ host: env.BACKEND_HOST, port: env.BACKEND_PORT })

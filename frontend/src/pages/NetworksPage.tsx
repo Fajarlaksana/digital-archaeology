@@ -2,7 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { useAuth } from '../auth/useAuth'
 import { Badge, Button, ErrorMessage, Field } from '../components/ui'
-import { networksApi, type NewNetworkInput, type PublicNetwork } from '../services/api'
+import {
+  networksApi,
+  pricesApi,
+  type NewNetworkInput,
+  type PublicAsset,
+  type PublicNetwork,
+} from '../services/api'
 
 export const NETWORKS_KEY = ['networks'] as const
 
@@ -19,7 +25,12 @@ export function NetworksPage() {
         database. Di sini hanya ditampilkan nama env var-nya.
       </p>
 
-      {canManage && <CreateNetworkForm />}
+      {canManage && (
+        <div className="mt-4 flex flex-wrap items-start gap-3">
+          <CreateNetworkForm />
+          <RefreshPrices />
+        </div>
+      )}
 
       <ErrorMessage error={networks.error} />
       {networks.isLoading && <p className="mt-6 text-sm text-slate-500">Memuat…</p>}
@@ -87,6 +98,7 @@ function NetworkCard({ network, canManage }: { network: PublicNetwork; canManage
             <th className="py-1">Aset</th>
             <th className="py-1">Desimal</th>
             <th className="py-1">Kontrak</th>
+            <th className="py-1">ID harga (CoinGecko)</th>
           </tr>
         </thead>
         <tbody>
@@ -99,6 +111,14 @@ function NetworkCard({ network, canManage }: { network: PublicNetwork; canManage
               <td className="py-1.5">{asset.decimals}</td>
               <td className="py-1.5 font-mono text-xs">
                 {asset.isNative ? 'native' : asset.contractAddress}
+              </td>
+              <td className="py-1.5">
+                <PriceIdCell
+                  networkId={network.id}
+                  asset={asset}
+                  canManage={canManage}
+                  isTestnet={network.isTestnet}
+                />
               </td>
             </tr>
           ))}
@@ -301,5 +321,85 @@ function CreateNetworkForm() {
         </Button>
       </div>
     </form>
+  )
+}
+
+function PriceIdCell({
+  networkId,
+  asset,
+  canManage,
+  isTestnet,
+}: {
+  networkId: string
+  asset: PublicAsset
+  canManage: boolean
+  isTestnet: boolean
+}) {
+  const queryClient = useQueryClient()
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(asset.priceId ?? '')
+  const save = useMutation({
+    mutationFn: () => pricesApi.setPriceId(networkId, asset.id, value.trim() || null),
+    onSuccess: async () => {
+      setEditing(false)
+      await queryClient.invalidateQueries({ queryKey: NETWORKS_KEY })
+    },
+  })
+
+  if (editing) {
+    return (
+      <form
+        className="flex items-center gap-2"
+        onSubmit={(e) => {
+          e.preventDefault()
+          save.mutate()
+        }}
+      >
+        <input
+          aria-label={`ID harga ${asset.symbol}`}
+          className="w-32 rounded border border-slate-300 px-2 py-1 font-mono text-xs"
+          placeholder="ethereum"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        <Button type="submit" disabled={save.isPending}>
+          Simpan
+        </Button>
+        <ErrorMessage error={save.error} />
+      </form>
+    )
+  }
+  return (
+    <span className="flex items-center gap-2 text-xs">
+      <span className="font-mono">{asset.priceId ?? '—'}</span>
+      {asset.priceId && isTestnet && <Badge tone="amber">simulasi</Badge>}
+      {canManage && (
+        <button type="button" className="text-slate-500 underline" onClick={() => setEditing(true)}>
+          ubah
+        </button>
+      )}
+    </span>
+  )
+}
+
+function RefreshPrices() {
+  const queryClient = useQueryClient()
+  const refresh = useMutation({
+    mutationFn: pricesApi.refresh,
+    onSuccess: () => queryClient.invalidateQueries(),
+  })
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
+      <Button variant="secondary" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
+        {refresh.isPending ? 'Mengambil harga…' : 'Perbarui harga sekarang'}
+      </Button>
+      {refresh.data && (
+        <p role="status" className="mt-2 text-xs text-slate-600">
+          {refresh.data.priced} aset dihargai, {refresh.data.revaluedBalances} saldo dinilai ulang
+          {refresh.data.missing.length > 0 && ` · tanpa harga: ${refresh.data.missing.join(', ')}`}
+        </p>
+      )}
+      <ErrorMessage error={refresh.error} />
+    </div>
   )
 }

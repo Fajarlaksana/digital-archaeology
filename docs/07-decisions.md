@@ -2,7 +2,7 @@
 
 Setiap keputusan penting dicatat di sini agar alasannya tidak hilang. Status yang dipakai: **Proposed** (usulan), **Accepted** (diterima), **Superseded** (diganti oleh ADR lain).
 
-Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-015 sudah diputuskan (ADR-011 digantikan ADR-013).
+Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-016 sudah diputuskan (ADR-011 digantikan ADR-013).
 
 ---
 
@@ -159,6 +159,18 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-0
   6. Kriteria saldo (min/max) tidak menyaring address yang di-scan, hanya menandai hasil "sesuai kriteria" (inactive + saldo native dalam rentang).
 - **Batasan yang diketahui:** worker berjalan di proses yang sama dengan API. Jika beban naik, pindahkan ke proses terpisah (kode sudah terpisah di `jobs/scan-queue.ts`). Filter "sesuai kriteria" dihitung di memori dari hasil inactive; jika satu scan berisi puluhan ribu address, pindahkan saldo native ke kolom tersendiri.
 
+## ADR-016 — Valuasi & penjadwal (Fase 6)
+- **Status:** Accepted
+- **Tanggal:** 2026-10-03
+- **Keputusan:**
+  1. **Mata uang referensi USD** (`FIAT_CURRENCY`, juga mendukung IDR). Nilai hanya dihitung dari snapshot dengan mata uang yang sama. Jika mata uang diganti, nilai lama tidak dicampur.
+  2. **Sumber harga CoinGecko** (`/simple/price`, `precision=full`). Key opsional dikirim di header, bukan di URL. Setiap pembaruan disimpan sebagai `price_snapshots` (harga, sumber, waktu) dan tidak pernah ditimpa.
+  3. **Tanpa float:** harga JSON diubah ke string desimal dengan representasi terpendek yang persis (`String(number)`) lalu dihitung dengan `decimal.js` presisi 120 digit. Hasil dibulatkan 8 desimal (ROUND_HALF_UP) dan disimpan `NUMERIC(38,8)`. Frontend memformat string, tidak pernah mem-parse ke `Number`.
+  4. **Testnet = simulasi:** aset testnet diberi `price_id` padanan mainnet (Sepolia ETH → `ethereum`) agar alur kelayakan ekonomis (Fase 8) bisa diuji, tetapi nilainya **selalu** dilabeli SIMULASI dan dijumlahkan **terpisah** dari nilai nyata (`value` vs `simulatedValue`). Keputusan pemilik projek.
+  5. **Penjadwal BullMQ** (`maintenance` queue, job scheduler, aman untuk banyak instance): harga tiap 60 menit dan scan semua network aktif setiap hari pukul 02:00 `Asia/Jakarta`. Scan terjadwal: `created_by = NULL`, `trigger = SCHEDULED`, dan audit `SCAN_SCHEDULED` dengan aktor SYSTEM. Network tanpa konfigurasi atau tanpa address dilewati dengan log. Scan hanya membaca (aturan keras #5).
+  6. **Dashboard per network** (`?networkId=`) selain ringkasan global.
+  7. **CSV:** RFC 4180, BOM UTF-8, CRLF, dan proteksi formula injection (OWASP) untuk semua sel. Kolom estimasi, simulasi, dan sumber harga dibuat eksplisit (SA 13: data publik, estimasi, otorisasi, dan status tidak dicampur). Maksimal 50.000 address per export.
+
 ---
 
 ## Jawaban pertanyaan terbuka (02-analysis bagian 5)
@@ -168,7 +180,7 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-0
 | Q1 | Chain mayoritas wallet lama | EVM, sehingga ADR-002 tetap (Sepolia dulu) | 2026-10-01 |
 | Q2 | Sendiri / klien + format mandat | Sendiri / tim internal; `owner_reference` umumnya `SELF`/nama tim, dan dokumen mandat klien tidak diprioritaskan di MVP | 2026-10-01 |
 | Q3 | Provider RPC & explorer | RPC: bebas (Alchemy/Infura), dirujuk lewat nama env var; explorer: Etherscan API v2 | 2026-10-02 |
-| Q4 | Provider harga & mata uang | *(putuskan sebelum Fase 6)* | |
+| Q4 | Provider harga & mata uang | CoinGecko, USD; testnet = simulasi harga mainnet | 2026-10-03 |
 | Q5 | Target deploy | *(putuskan sebelum Fase 14)* | |
 | Q6 | Jumlah operator | Lebih dari 3; maker-checker bisa ditegakkan penuh, tiap role dipegang orang berbeda | 2026-10-01 |
 

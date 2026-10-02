@@ -26,6 +26,20 @@ const envSchema = z.object({
   EXPLORER_RATE_LIMIT_PER_SECOND: z.coerce.number().min(0.5).max(50).default(4),
   INACTIVITY_THRESHOLD_DAYS: z.coerce.number().int().min(1).max(36_500).default(730),
 
+  // --- Valuation & scheduler (Phase 6) ---
+  FIAT_CURRENCY: z.enum(['USD', 'IDR']).default('USD'),
+  PRICE_API_URL: z.url({ protocol: /^https$/ }).default('https://api.coingecko.com/api/v3'),
+  /** Optional CoinGecko key (demo or pro). Sent as a header, never in the URL. */
+  PRICE_API_KEY: optional(z.string().min(8).max(100)),
+  PRICE_UPDATE_INTERVAL_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
+  /** Cron for automatic scans of every active network; "off" disables. Default: daily 02:00. */
+  SCAN_SCHEDULE_CRON: z
+    .string()
+    .trim()
+    .regex(/^(off|(\S+\s+){4}\S+)$/, 'must be a 5-field cron expression or "off"')
+    .default('0 2 * * *'),
+  SCHEDULER_TIMEZONE: z.string().min(1).default('Asia/Jakarta'),
+
   // --- Auth (Phase 3) ---
   /** Origin of the web UI. State-changing requests from any other Origin are rejected (CSRF). */
   APP_ORIGIN: z.url({ protocol: /^https?$/ }).default('http://127.0.0.1:5173'),

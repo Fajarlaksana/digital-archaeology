@@ -27,6 +27,7 @@ const SEPOLIA: PublicNetwork = {
       decimals: 18,
       isNative: true,
       contractAddress: null,
+      priceId: 'ethereum',
     },
     {
       id: 'a2',
@@ -35,6 +36,7 @@ const SEPOLIA: PublicNetwork = {
       decimals: 6,
       isNative: false,
       contractAddress: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+      priceId: 'usd-coin',
     },
   ],
 }
@@ -56,6 +58,9 @@ const ADDRESS: PublicAddress = {
   archivedAt: null,
   createdAt: '2026-10-02T00:00:00.000Z',
   explorerUrl: 'https://sepolia.etherscan.io/address/0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed',
+  estimatedValue: '1250.25000000',
+  fiatCurrency: 'USD',
+  valueSimulated: true,
 }
 
 const page = (items: PublicAddress[]) =>

@@ -18,6 +18,8 @@ interface TokenSeed {
   decimals: number
   /** EIP-55 checksummed. Verify on https://sepolia.etherscan.io before relying on it. */
   contractAddress: string
+  /** Mainnet CoinGecko id: testnet values are SIMULATED (ADR-016). */
+  priceId: string
 }
 
 const SEPOLIA = {
@@ -43,12 +45,14 @@ const SEPOLIA_TOKENS: TokenSeed[] = [
     name: 'USD Coin (Circle testnet)',
     decimals: 6,
     contractAddress: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+    priceId: 'usd-coin',
   },
   {
     symbol: 'LINK',
     name: 'Chainlink Token (testnet)',
     decimals: 18,
     contractAddress: '0x779877A7B0D9E8603169DdbD7836e478b4624789',
+    priceId: 'chainlink',
   },
 ]
 
@@ -77,8 +81,11 @@ try {
         symbol: 'ETH',
         name: 'Sepolia Ether',
         decimals: 18,
+        priceId: 'ethereum',
       },
     })
+  } else if (!native.priceId) {
+    await db.asset.update({ where: { id: native.id }, data: { priceId: 'ethereum' } })
   }
 
   for (const token of SEPOLIA_TOKENS) {
@@ -90,7 +97,12 @@ try {
         },
       },
       create: { networkId: network.id, isNative: false, ...token },
-      update: { symbol: token.symbol, name: token.name, decimals: token.decimals },
+      update: {
+        symbol: token.symbol,
+        name: token.name,
+        decimals: token.decimals,
+        priceId: token.priceId,
+      },
     })
   }
 

@@ -138,11 +138,32 @@ Detail address menampilkan **saldo per aset** (angka persis, tanpa pembulatan) d
 
 Scan terjadwal otomatis menyusul di Fase 6.
 
-## 7. Dashboard & laporan · *Fase 6* · semua role
+## 7. Dashboard, nilai & laporan · *Fase 6* ✅ · semua role
 
-- **Dashboard:** total address, address tidak aktif, address terverifikasi, nilai yang bisa dipulihkan, dan transaksi pending/selesai.
-- **Address Detail:** saldo per aset, aktivitas terakhir, histori scan, status otorisasi, dan transaksi.
-- **Reports**, lalu **Export CSV**. Nilai fiat selalu disertai sumber dan waktu harga, karena nilainya hanya **estimasi**.
+### 7.1 Dashboard
+Halaman awal setelah login menampilkan:
+- **Address terdaftar / Tidak aktif / Terverifikasi / Transaksi.** Address yang diarsipkan tidak dihitung.
+- **Estimasi nilai address tidak aktif** dan **estimasi nilai seluruh inventaris**, dalam USD.
+- **Scan per network**: scan terakhir (manual atau *terjadwal*) dan jadwal scan otomatis berikutnya.
+- **Status sistem**: backend, database, RPC.
+
+### 7.2 Cara membaca nilai
+- Nilai fiat adalah **estimasi** dari harga CoinGecko, **bukan** dasar kepemilikan. Waktu dan sumber harga selalu ditampilkan.
+- Aset **testnet** (misalnya Sepolia ETH) tidak punya harga pasar. Sistem menghargainya seperti aset mainnet padanannya **hanya untuk simulasi**, dengan label kuning **SIMULASI**. Angka ini tidak bernilai nyata dan dipisahkan dari nilai nyata di dashboard.
+- Harga diperbarui otomatis setiap 60 menit. Saldo hasil scan baru langsung dinilai dengan harga terakhir.
+
+### 7.3 Mengatur harga · ADMIN
+- Menu **Networks**, lalu kolom **ID harga (CoinGecko)** di setiap aset: klik **ubah** dan isi ID CoinGecko, misalnya `ethereum`, `usd-coin`, `chainlink`. ID bisa dicari di coingecko.com (bagian "API ID" di halaman koin). Kosongkan untuk berhenti menilai aset itu.
+- **Perbarui harga sekarang** mengambil harga tanpa menunggu jadwal, lalu menampilkan jumlah aset yang berhasil dihargai dan ID yang tidak ditemukan.
+
+### 7.4 Scan otomatis
+- Setiap network aktif yang sudah dikonfigurasi dan punya address di-scan otomatis **setiap hari pukul 02:00 WIB** (atur di `.env`: `SCAN_SCHEDULE_CRON`, `SCHEDULER_TIMEZONE`; `off` untuk mematikan).
+- Scan otomatis tercatat sebagai aksi **SYSTEM** dan diberi label *terjadwal*. Scan ini **hanya membaca** blockchain dan tidak pernah memindahkan aset.
+
+### 7.5 Export CSV
+- Menu **Addresses**, lalu **Export inventaris (CSV)** atau **Export tidak aktif (CSV)**. Satu baris per address × aset, berisi saldo persis (desimal + base unit), estimasi nilai, `value_simulated`, sumber dan waktu harga, serta status.
+- Isian yang diawali `=`, `+`, `-`, `@` diberi tanda kutip satu (`'`) agar tidak dijalankan sebagai rumus saat dibuka di Excel/Sheets.
+- Setiap export tercatat di audit log.
 
 ## 8. Key Vault · *Fase 7* · SUPER_ADMIN
 

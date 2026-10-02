@@ -55,6 +55,12 @@ enum RecoveryStatus {
   TRANSFERRED
 }
 
+/// Who started a scan (Phase 6).
+enum ScanTrigger {
+  MANUAL
+  SCHEDULED
+}
+
 enum ScanStatus {
   QUEUED
   RUNNING
@@ -172,6 +178,9 @@ model Asset {
   /// Null for the network's native asset (ETH, BTC, ...).
   contractAddress String?  @map("contract_address")
   isNative        Boolean  @default(false) @map("is_native")
+  /// CoinGecko coin id used for valuation (e.g. "ethereum"). Testnet assets point at their mainnet
+  /// counterpart and are always shown as SIMULATED (ADR-016).
+  priceId         String?  @map("price_id")
   symbol          String
   name            String
   decimals        Int
@@ -268,21 +277,22 @@ model Balance {
 // ───────────────────────────── Scans ─────────────────────────────
 
 model Scan {
-  id             String     @id @default(uuid()) @db.Uuid
-  networkId      String     @map("network_id") @db.Uuid
-  status         ScanStatus @default(QUEUED)
-  thresholdDays  Int        @map("threshold_days")
+  id             String      @id @default(uuid()) @db.Uuid
+  networkId      String      @map("network_id") @db.Uuid
+  status         ScanStatus  @default(QUEUED)
+  trigger        ScanTrigger @default(MANUAL)
+  thresholdDays  Int         @map("threshold_days")
   /// Base units of the native asset; null = no bound.
-  minimumBalance Decimal?   @map("minimum_balance") @db.Decimal(78, 0)
-  maximumBalance Decimal?   @map("maximum_balance") @db.Decimal(78, 0)
-  totalAddresses Int        @default(0) @map("total_addresses")
-  totalInactive  Int        @default(0) @map("total_inactive")
-  totalFailed    Int        @default(0) @map("total_failed")
-  errorMessage   String?    @map("error_message")
-  createdById    String?    @map("created_by") @db.Uuid
-  startedAt      DateTime?  @map("started_at")
-  completedAt    DateTime?  @map("completed_at")
-  createdAt      DateTime   @default(now()) @map("created_at")
+  minimumBalance Decimal?    @map("minimum_balance") @db.Decimal(78, 0)
+  maximumBalance Decimal?    @map("maximum_balance") @db.Decimal(78, 0)
+  totalAddresses Int         @default(0) @map("total_addresses")
+  totalInactive  Int         @default(0) @map("total_inactive")
+  totalFailed    Int         @default(0) @map("total_failed")
+  errorMessage   String?     @map("error_message")
+  createdById    String?     @map("created_by") @db.Uuid
+  startedAt      DateTime?   @map("started_at")
+  completedAt    DateTime?   @map("completed_at")
+  createdAt      DateTime    @default(now()) @map("created_at")
 
   network   Network      @relation(fields: [networkId], references: [id])
   createdBy User?        @relation("ScanCreatedBy", fields: [createdById], references: [id])

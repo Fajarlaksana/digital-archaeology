@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { useAuth } from '../auth/useAuth'
 import { Badge, Button, ErrorMessage, Field } from '../components/ui'
-import { addressesApi, scansApi, type PublicAddress } from '../services/api'
+import { addressesApi, formatFiat, scansApi, type PublicAddress } from '../services/api'
 import { ADDRESSES_KEY, ActivityBadge } from './AddressesPage'
 
 export function AddressDetailPage() {
@@ -80,6 +80,10 @@ function Detail({ address: a, canManage }: { address: PublicAddress; canManage: 
           {a.lastScannedAt ? new Date(a.lastScannedAt).toLocaleString('id-ID') : 'Belum pernah'}
         </Item>
         <Item label="Ditambahkan">{new Date(a.createdAt).toLocaleDateString('id-ID')}</Item>
+        <Item label={`Estimasi nilai (${a.fiatCurrency})`}>
+          {formatFiat(a.estimatedValue, a.fiatCurrency)}{' '}
+          {a.estimatedValue !== null && a.valueSimulated && <Badge tone="amber">SIMULASI</Badge>}
+        </Item>
       </dl>
 
       <section className="mt-6 rounded-lg border border-slate-200 bg-white p-4">
@@ -176,6 +180,7 @@ function BalancesSection({ addressId }: { addressId: string }) {
             <tr>
               <th className="py-1">Aset</th>
               <th className="py-1 text-right">Jumlah</th>
+              <th className="py-1 text-right">Estimasi nilai</th>
               <th className="py-1 text-right">Diperbarui</th>
             </tr>
           </thead>
@@ -189,6 +194,21 @@ function BalancesSection({ addressId }: { addressId: string }) {
                 {/* Exact decimal string from the server — never parsed into a float. */}
                 <td className="py-1.5 text-right font-mono" title={`${b.quantity} base units`}>
                   {b.formatted}
+                </td>
+                <td
+                  className="py-1.5 text-right font-mono"
+                  title={
+                    b.pricedAt
+                      ? `Harga ${b.price} ${b.fiatCurrency} (${b.priceSource}, ${new Date(b.pricedAt).toLocaleString('id-ID')})`
+                      : 'Belum ada harga'
+                  }
+                >
+                  {formatFiat(b.fiatValue, b.fiatCurrency)}
+                  {b.fiatValue !== null && b.simulated && (
+                    <span className="ml-1">
+                      <Badge tone="amber">SIMULASI</Badge>
+                    </span>
+                  )}
                 </td>
                 <td className="py-1.5 text-right text-xs text-slate-500">
                   {new Date(b.updatedAt).toLocaleString('id-ID')}

@@ -211,6 +211,9 @@ importers:
       csv-parse:
         specifier: ^7.0.3
         version: 7.0.3
+      decimal.js:
+        specifier: ^10.6.0
+        version: 10.6.0
       fastify:
         specifier: ^5.12.5
         version: 5.12.5

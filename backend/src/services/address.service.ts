@@ -13,6 +13,7 @@ import {
   type ImportRowResult,
   type ImportSummary,
 } from '../domain/address-import'
+import { sumFiat } from '../domain/valuation'
 import type { ActivityStatus } from '../generated/prisma/client'
 import type { AddressRepository, AddressWithNetwork } from '../repositories/address.repository'
 import type { AuditLogRepository } from '../repositories/audit-log.repository'
@@ -40,10 +41,18 @@ export interface PublicAddress {
   createdAt: string
   /** Link to the public block explorer, when the network has one. */
   explorerUrl: string | null
+  /** Sum of the priced balances in fiatCurrency (ESTIMATE, SA 4.4); null when nothing is priced. */
+  estimatedValue: string | null
+  fiatCurrency: string
+  /** True on testnets: value uses mainnet prices and is NOT real money (ADR-016). */
+  valueSimulated: boolean
 }
 
-export function toPublicAddress(row: AddressWithNetwork): PublicAddress {
+export function toPublicAddress(row: AddressWithNetwork, fiatCurrency: string): PublicAddress {
   const iso = (d: Date | null) => d?.toISOString() ?? null
+  const priced = row.balances.filter(
+    (b) => b.fiatValue !== null && b.priceSnapshot?.fiatCurrency === fiatCurrency,
+  )
   return {
     id: row.id,
     network: { id: row.network.id, name: row.network.name, displayName: row.network.displayName },
@@ -63,6 +72,9 @@ export function toPublicAddress(row: AddressWithNetwork): PublicAddress {
     explorerUrl: row.network.explorerUrl
       ? `${row.network.explorerUrl.replace(/\/$/, '')}/address/${row.address}`
       : null,
+    estimatedValue: priced.length ? sumFiat(priced.map((b) => b.fiatValue!.toFixed(8))) : null,
+    fiatCurrency,
+    valueSimulated: row.network.isTestnet,
   }
 }
 
@@ -111,10 +123,18 @@ export interface AddressServiceDeps {
   addresses: AddressRepository
   networks: NetworkRepository
   audit: AuditLogRepository
+  fiatCurrency: string
   now: () => Date
 }
 
-export function createAddressService({ addresses, networks, audit, now }: AddressServiceDeps) {
+export function createAddressService({
+  addresses,
+  networks,
+  audit,
+  fiatCurrency,
+  now,
+}: AddressServiceDeps) {
+  const toPublic = (row: AddressWithNetwork) => toPublicAddress(row, fiatCurrency)
   async function getOrThrow(id: string): Promise<AddressWithNetwork> {
     const row = await addresses.findById(id)
     if (!row) throw new AppError('NOT_FOUND', 'Address not found', { resourceId: id })
@@ -168,7 +188,7 @@ export function createAddressService({ addresses, networks, audit, now }: Addres
         take: query.pageSize,
       })
       return {
-        items: items.map(toPublicAddress),
+        items: items.map(toPublic),
         total,
         page: query.page,
         pageSize: query.pageSize,
@@ -176,7 +196,7 @@ export function createAddressService({ addresses, networks, audit, now }: Addres
     },
 
     async get(id: string): Promise<PublicAddress> {
-      return toPublicAddress(await getOrThrow(id))
+      return toPublic(await getOrThrow(id))
     },
 
     async create(
@@ -219,7 +239,7 @@ export function createAddressService({ addresses, networks, audit, now }: Addres
           ownerReference: created.ownerReference,
         },
       })
-      return toPublicAddress(await getOrThrow(created.id))
+      return toPublic(await getOrThrow(created.id))
     },
 
     async update(
@@ -245,7 +265,7 @@ export function createAddressService({ addresses, networks, audit, now }: Addres
           after: { label: updated.label, ownerReference: updated.ownerReference },
         },
       })
-      return toPublicAddress(updated)
+      return toPublic(updated)
     },
 
     async archive(actor: AuthContext, id: string, reason: string | null, meta: RequestMeta) {
@@ -259,7 +279,7 @@ export function createAddressService({ addresses, networks, audit, now }: Addres
         resourceId: id,
         metadata: { address: row.address, reason },
       })
-      return toPublicAddress(updated)
+      return toPublic(updated)
     },
 
     async restore(actor: AuthContext, id: string, meta: RequestMeta) {
@@ -273,7 +293,7 @@ export function createAddressService({ addresses, networks, audit, now }: Addres
         resourceId: id,
         metadata: { address: row.address },
       })
-      return toPublicAddress(updated)
+      return toPublic(updated)
     },
 
     /** Dry run: validates every row and saves nothing. */

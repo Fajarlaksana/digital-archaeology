@@ -32,6 +32,7 @@ const NETWORK: PublicNetwork = {
       decimals: 18,
       isNative: true,
       contractAddress: null,
+      priceId: 'ethereum',
     },
   ],
 }
@@ -46,6 +47,7 @@ function scan(overrides: Partial<PublicScan> = {}): PublicScan {
       nativeSymbol: 'ETH',
     },
     status: 'COMPLETED',
+    trigger: 'MANUAL',
     thresholdDays: 730,
     minimumBalance: '0.1',
     maximumBalance: null,
@@ -211,6 +213,9 @@ describe('Address detail with scan data', () => {
             archivedAt: null,
             createdAt: '2026-10-01T00:00:00.000Z',
             explorerUrl: null,
+            estimatedValue: '246913.57802469',
+            fiatCurrency: 'USD',
+            valueSimulated: true,
           },
         }),
       [`GET /api/addresses/${id}/balances`]: () =>
@@ -225,6 +230,12 @@ describe('Address detail with scan data', () => {
               quantity: '123456789012345678901',
               formatted: '123.456789012345678901',
               updatedAt: '2026-10-02T08:00:09.000Z',
+              fiatCurrency: 'USD',
+              fiatValue: '246913.58',
+              price: '2000',
+              priceSource: 'coingecko',
+              pricedAt: '2026-10-02T08:00:00.000Z',
+              simulated: true,
             },
           ],
         }),
@@ -254,5 +265,7 @@ describe('Address detail with scan data', () => {
     expect(await screen.findByText('123.456789012345678901')).toBeTruthy()
     expect(await screen.findByText('perlu review')).toBeTruthy()
     expect(screen.getByText('5 / 2 · 2')).toBeTruthy()
+    expect(screen.getByText('$246,913.58')).toBeTruthy()
+    expect(screen.getAllByText('SIMULASI').length).toBeGreaterThan(0)
   })
 })

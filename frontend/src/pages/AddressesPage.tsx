@@ -10,6 +10,8 @@ import {
   type ImportRowResult,
   type ImportSummary,
   type PublicAddress,
+  formatFiat,
+  reportUrls,
 } from '../services/api'
 import { NETWORKS_KEY } from './NetworksPage'
 
@@ -47,19 +49,39 @@ export function AddressesPage() {
         reference.
       </p>
 
-      {canManage && (
-        <div className="mt-4 flex gap-2">
-          <Button onClick={() => setPanel(panel === 'create' ? 'none' : 'create')}>
-            Tambah address
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => setPanel(panel === 'import' ? 'none' : 'import')}
-          >
-            Import CSV
-          </Button>
-        </div>
-      )}
+      <div className="mt-4 flex flex-wrap gap-2">
+        {canManage && (
+          <>
+            <Button onClick={() => setPanel(panel === 'create' ? 'none' : 'create')}>
+              Tambah address
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setPanel(panel === 'import' ? 'none' : 'import')}
+            >
+              Import CSV
+            </Button>
+          </>
+        )}
+        {can('reports:read') && (
+          <>
+            <a
+              href={reportUrls.inventory}
+              download
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+            >
+              Export inventaris (CSV)
+            </a>
+            <a
+              href={reportUrls.inactivity}
+              download
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+            >
+              Export tidak aktif (CSV)
+            </a>
+          </>
+        )}
+      </div>
       {panel === 'create' && <CreateAddressForm onDone={() => setPanel('none')} />}
       {panel === 'import' && <ImportPanel />}
 
@@ -125,6 +147,7 @@ export function AddressesPage() {
               <th className="px-4 py-2">Label</th>
               <th className="px-4 py-2">Owner ref</th>
               <th className="px-4 py-2">Aktivitas</th>
+              <th className="px-4 py-2 text-right">Estimasi nilai</th>
             </tr>
           </thead>
           <tbody>
@@ -192,6 +215,14 @@ function AddressRow({ address: a }: { address: PublicAddress }) {
       <td className="px-4 py-2">{a.ownerReference}</td>
       <td className="px-4 py-2">
         <ActivityBadge status={a.activityStatus} />
+      </td>
+      <td className="px-4 py-2 text-right font-mono text-xs">
+        {formatFiat(a.estimatedValue, a.fiatCurrency)}
+        {a.estimatedValue !== null && a.valueSimulated && (
+          <span className="ml-1" title="Testnet: dihargai seperti mainnet, tidak bernilai nyata">
+            <Badge tone="amber">sim</Badge>
+          </span>
+        )}
       </td>
     </tr>
   )

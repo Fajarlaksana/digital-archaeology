@@ -25,6 +25,8 @@ export const NO_ACTIVITY: ActivitySummary = {
 export function createFakeChain() {
   const accounts = new Map<string, FakeAccount>()
   let configured = true
+  /** When set, only these network ids are 'configured' (isolates tests sharing one DB). */
+  let onlyNetworks: Set<string> | null = null
   let servedChainId: number | null = null
   const reads: string[] = []
 
@@ -36,7 +38,7 @@ export function createFakeChain() {
   }
 
   const factory: ChainClientFactory = (network) => {
-    if (!configured) {
+    if (!configured || (onlyNetworks && !onlyNetworks.has(network.id))) {
       throw new AppError('INVALID_NETWORK', `RPC is not configured for "${network.name}"`)
     }
     return {
@@ -59,6 +61,9 @@ export function createFakeChain() {
     },
     setConfigured(value: boolean) {
       configured = value
+    },
+    restrictTo(networkIds: string[] | null) {
+      onlyNetworks = networkIds ? new Set(networkIds) : null
     },
     serveChainId(id: number | null) {
       servedChainId = id

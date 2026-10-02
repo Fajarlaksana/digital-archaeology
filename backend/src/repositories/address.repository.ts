@@ -1,8 +1,19 @@
-import type { ActivityStatus, Address, Network, Prisma } from '../generated/prisma/client'
+import type { ActivityStatus, Address, Prisma } from '../generated/prisma/client'
 import type { Database } from '../lib/prisma'
 import { fromDbAmount, toDbAmount } from './amount'
 
-export type AddressWithNetwork = Address & { network: Network }
+/** Address with its network and the fiat values of its balances (for the estimated value). */
+const ADDRESS_INCLUDE = {
+  network: true,
+  balances: {
+    select: {
+      fiatValue: true,
+      priceSnapshot: { select: { fiatCurrency: true, pricedAt: true } },
+    },
+  },
+} satisfies Prisma.AddressInclude
+
+export type AddressWithNetwork = Prisma.AddressGetPayload<{ include: typeof ADDRESS_INCLUDE }>
 
 export interface NewAddress {
   networkId: string
@@ -82,7 +93,7 @@ export function createAddressRepository(db: Database) {
     },
 
     findById(id: string): Promise<AddressWithNetwork | null> {
-      return db.address.findUnique({ where: { id }, include: { network: true } })
+      return db.address.findUnique({ where: { id }, include: ADDRESS_INCLUDE })
     },
 
     findByNetworkAndAddress(networkId: string, address: string): Promise<Address | null> {
@@ -109,7 +120,7 @@ export function createAddressRepository(db: Database) {
       const [items, total] = await db.$transaction([
         db.address.findMany({
           where,
-          include: { network: true },
+          include: ADDRESS_INCLUDE,
           orderBy: { createdAt: 'desc' },
           skip: query.skip,
           take: Math.min(query.take ?? 50, 500),
@@ -123,7 +134,7 @@ export function createAddressRepository(db: Database) {
       id: string,
       data: { label?: string | null; ownerReference?: string; archivedAt?: Date | null },
     ): Promise<AddressWithNetwork> {
-      return db.address.update({ where: { id }, data, include: { network: true } })
+      return db.address.update({ where: { id }, data, include: ADDRESS_INCLUDE })
     },
 
     async upsertBalance(addressId: string, assetId: string, quantity: bigint): Promise<void> {

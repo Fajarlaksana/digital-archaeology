@@ -7,6 +7,7 @@ import type {
   Scan,
   ScanResult,
   ScanStatus,
+  ScanTrigger,
 } from '../generated/prisma/client'
 import type { Database } from '../lib/prisma'
 import { fromDbAmountOrNull, toDbAmount } from './amount'
@@ -60,7 +61,9 @@ export function createScanRepository(db: Database) {
       minimumBalance: bigint | null
       maximumBalance: bigint | null
       totalAddresses: number
-      createdById: string
+      /** null = started by the scheduler (SYSTEM). */
+      createdById: string | null
+      trigger: ScanTrigger
     }): Promise<Scan> {
       return db.scan.create({
         data: {
@@ -230,13 +233,15 @@ export function createScanRepository(db: Database) {
     async balancesForAddress(addressId: string) {
       const rows = await db.balance.findMany({
         where: { addressId },
-        include: { asset: true },
+        include: { asset: { include: { network: true } }, priceSnapshot: true },
         orderBy: [{ asset: { isNative: 'desc' } }, { asset: { symbol: 'asc' } }],
       })
       return rows.map((row) => ({
         asset: row.asset,
         quantity: fromDbAmountOrNull(row.quantity) ?? 0n,
         updatedAt: row.updatedAt,
+        fiatValue: row.fiatValue?.toFixed(8) ?? null,
+        priceSnapshot: row.priceSnapshot,
       }))
     },
   }

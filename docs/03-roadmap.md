@@ -138,14 +138,19 @@ M4 Production     : F12 → F13 → F14
 
 ## Fase 6 — Valuasi & Dashboard Read-only · M
 
-- [ ] `PriceProvider` (misalnya CoinGecko) + cache + simpan ke `price_snapshots`
-- [ ] Hitung `fiat_value` dengan decimal library (tidak memakai float)
-- [ ] Job `UPDATE_PRICE`, `REFRESH_BALANCES`, dan scheduler (daily/weekly/manual)
-- [ ] Dashboard cards (SA bagian 14) + riwayat aktivitas + status job
-- [ ] Address Detail lengkap: saldo per aset, aktivitas, histori scan
-- [ ] Export CSV inventory & inactivity report
+- [x] `PriceProvider` CoinGecko (`/simple/price`, key opsional di header, retry) + `price_snapshots` (harga, sumber, waktu); `assets.price_id` diatur ADMIN
+- [x] `fiat_value` dihitung dengan `decimal.js` presisi 120 digit, dibulatkan 8 desimal; harga JSON dinormalisasi ke string desimal tanpa aritmetika float
+- [x] Aset testnet dihargai seperti mainnet dan **selalu** berlabel SIMULASI (ADR-016); dashboard memisahkan nilai nyata vs simulasi
+- [x] Scheduler BullMQ: `update-prices` tiap `PRICE_UPDATE_INTERVAL_MINUTES` (60) dan scan otomatis harian `SCAN_SCHEDULE_CRON` (`0 2 * * *`, `Asia/Jakarta`, bisa `off`); scan terjadwal = aksi SYSTEM, hanya membaca
+- [x] Setelah scan selesai, saldo baru langsung dinilai dengan harga terakhir
+- [x] `GET /api/dashboard` (opsional `?networkId=`): jumlah address per status, estimasi nilai address tidak aktif & seluruh inventaris, transaksi, scan terakhir per network, jadwal berikutnya
+- [x] Address & detail: estimasi nilai per address dan per saldo (harga, sumber, waktu)
+- [x] Export CSV inventaris & tidak aktif (satu baris per address × aset; anti formula-injection; BOM + CRLF; audit `REPORT_EXPORTED`)
+- [x] `POST /api/prices/refresh` (ADMIN) untuk ambil harga manual
 
 **DoD — Milestone M1 tercapai:** semua wallet testnet tampil di dashboard dengan saldo, nilai fiat (beserta timestamp harga), dan status aktivitas yang benar. Tag git `v0.1.0-m1`.
+
+> **Status 2026-10-03:** kode selesai, 370 test hijau; harga CoinGecko sungguhan masuk dan penjadwal aktif (diuji langsung). **Milestone M1 belum ditag**: syarat "wallet testnet tampil dengan saldo dan status yang benar" butuh verifikasi live Fase 5 (`SEPOLIA_RPC_URL` + `EXPLORER_API_KEY`). Setelah lolos → tag `v0.1.0-m1`.
 
 ---
 
@@ -276,6 +281,7 @@ M4 Production     : F12 → F13 → F14
 | 2026-10-01 | F0 | ADR-001/002/004–007 Accepted: TypeScript stack, EVM Sepolia, internal use, >3 operator |
 | 2026-10-01 | F1 | Monorepo + shared/backend/frontend, 49 test hijau. Pending: verifikasi Docker (Docker Desktop gagal start) |
 | 2026-10-02 | F1 | Docker Desktop (Hyper-V) hidup: `docker compose up -d` terverifikasi (port 5434), dev DB pindah ke Docker (ADR-013) |
+| 2026-10-03 | F6 | Kode selesai: valuasi CoinGecko (USD), simulasi testnet, scheduler harga + scan harian, dashboard, export CSV; 370 test hijau. M1 menunggu verifikasi live |
 | 2026-10-02 | F5 | Kode selesai: scanner RPC+Etherscan, analyzer basis transaksi keluar, BullMQ, UI scans; 305 test hijau. Tertunda: verifikasi live (key Sepolia) |
 | 2026-10-02 | F4 | Selesai. Networks, ChainAdapter EVM, inventaris address, arsip, import CSV preview→simpan; 257 test hijau |
 | 2026-10-02 | F3 | Selesai. Auth + RBAC + MFA + Users UI, 187 test hijau |

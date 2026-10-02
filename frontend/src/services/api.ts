@@ -139,6 +139,8 @@ export interface PublicAsset {
   decimals: number
   isNative: boolean
   contractAddress: string | null
+  /** CoinGecko id used for valuation. */
+  priceId: string | null
 }
 
 export interface PublicNetwork {
@@ -209,6 +211,11 @@ export interface PublicAddress {
   archivedAt: string | null
   createdAt: string
   explorerUrl: string | null
+  /** ESTIMATE in fiatCurrency; null when nothing is priced. */
+  estimatedValue: string | null
+  fiatCurrency: string
+  /** Testnet: priced with mainnet prices — not real money. */
+  valueSimulated: boolean
 }
 
 export interface AddressPage {
@@ -305,6 +312,7 @@ export interface PublicScan {
   id: string
   network: { id: string; name: string; displayName: string; nativeSymbol: string | null }
   status: ScanStatus
+  trigger: 'MANUAL' | 'SCHEDULED'
   thresholdDays: number
   minimumBalance: string | null
   maximumBalance: string | null
@@ -347,6 +355,12 @@ export interface AddressBalance {
   quantity: string
   formatted: string
   updatedAt: string
+  fiatCurrency: string
+  fiatValue: string | null
+  price: string | null
+  priceSource: string | null
+  pricedAt: string | null
+  simulated: boolean
 }
 
 export interface AddressScanHistory {
@@ -396,3 +410,96 @@ export const scansApi = {
 
 export const isScanRunning = (scan: Pick<PublicScan, 'status'>) =>
   scan.status === 'QUEUED' || scan.status === 'RUNNING'
+
+// ─── Valuation, dashboard, reports (Phase 6) ───
+
+export interface ValueBlock {
+  value: string
+  simulatedValue: string
+  oldestPriceAt: string | null
+  priceSource: string | null
+}
+
+export interface DashboardSummary {
+  fiatCurrency: string
+  networkId: string | null
+  addresses: {
+    total: number
+    active: number
+    inactive: number
+    unscanned: number
+    withBalance: number
+    verified: number
+    needsReview: number
+  }
+  inactiveValue: ValueBlock
+  totalValue: ValueBlock
+  transactions: { pending: number; completed: number }
+  networks: Array<{
+    id: string
+    name: string
+    displayName: string
+    isTestnet: boolean
+    lastScan: {
+      id: string
+      status: ScanStatus
+      trigger: 'MANUAL' | 'SCHEDULED'
+      createdAt: string
+      completedAt: string | null
+    } | null
+  }>
+  recentScans: Array<{
+    id: string
+    network: string
+    status: ScanStatus
+    trigger: 'MANUAL' | 'SCHEDULED'
+    totalAddresses: number
+    totalInactive: number
+    createdAt: string
+  }>
+  schedule: {
+    scansEnabled: boolean
+    scanPattern: string | null
+    timezone: string
+    nextScanAt: string | null
+    priceIntervalMinutes: number
+  } | null
+}
+
+export const dashboardApi = {
+  summary: (networkId?: string) =>
+    apiFetch<DashboardSummary>(`/api/dashboard${networkId ? `?networkId=${networkId}` : ''}`),
+}
+
+export const pricesApi = {
+  refresh: () =>
+    apiFetch<{ priced: number; missing: string[]; revaluedBalances: number }>(
+      '/api/prices/refresh',
+      {
+        method: 'POST',
+        body: {},
+      },
+    ),
+  setPriceId: (networkId: string, assetId: string, priceId: string | null) =>
+    apiFetch<{ asset: { id: string; symbol: string; priceId: string | null } }>(
+      `/api/networks/${networkId}/assets/${assetId}`,
+      { method: 'PATCH', body: { priceId } },
+    ),
+}
+
+/** Download links: the browser sends the session cookie with same-origin GETs. */
+export const reportUrls = {
+  inventory: '/api/reports/addresses.csv?type=inventory',
+  inactivity: '/api/reports/addresses.csv?type=inactivity',
+}
+
+/** Formats a fiat amount string for display without ever parsing it into a float. */
+export function formatFiat(value: string | null | undefined, currency: string): string {
+  if (value === null || value === undefined || value === '') return '—'
+  const [whole = '0', fraction = ''] = value.split('.')
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, currency === 'IDR' ? '.' : ',')
+  const sep = currency === 'IDR' ? ',' : '.'
+  const trimmed = fraction.replace(/0+$/, '')
+  const shown = trimmed.length <= 2 ? fraction.slice(0, 2).padEnd(2, '0') : trimmed
+  return `${currency === 'IDR' ? 'Rp' : '$'}${grouped}${sep}${shown}`
+}
