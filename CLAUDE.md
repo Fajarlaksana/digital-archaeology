@@ -37,7 +37,7 @@ Kebutuhan lengkap: `system_analysis_digital_archaeology.md`. Revisi & keputusan:
 - Test semua: `pnpm test` · satu package: `pnpm --filter backend test`
 - Lint, typecheck, format: `pnpm lint`, `pnpm typecheck`, `pnpm format`
 - DB: `pnpm --filter backend db:migrate` (buat/terapkan migrasi), `db:deploy`, `db:seed`, `db:status`, `db:generate`
-- Test DB otomatis memakai `<db>_test` (di-reset tiap run) dan di-skip jika DB tidak terjangkau
+- Test DB: setiap run membuat DB baru `<db>_test_<waktu>_<acak>`, menerapkan `migrate deploy`, lalu menghapusnya. Test di-skip jika DB tidak terjangkau. Jangan pernah memakai `prisma migrate reset` pada database yang sudah ada
 - Constraint/trigger yang tidak bisa diekspresikan Prisma ditulis manual di `migration.sql` (lihat ADR-010). Jangan dihapus saat membuat migrasi baru
 
 ## Cara kerja

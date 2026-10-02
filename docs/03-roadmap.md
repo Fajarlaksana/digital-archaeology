@@ -48,6 +48,8 @@ M4 Production     : F12 → F13 → F14
 
 **DoD:** `docker compose up -d && pnpm dev` jalan, `/health` mengembalikan 200, `pnpm test`, `pnpm lint`, dan `pnpm typecheck` hijau, dan test redaction logger lulus.
 
+> **Update 2026-10-02:** `/health/database` = 200 terhadap PostgreSQL 16 native (ADR-011). Hanya `docker compose up -d` yang belum diverifikasi.
+>
 > **Status 2026-10-01:** semua terpenuhi **kecuali** verifikasi `docker compose up -d`, karena Docker Desktop di mesin dev gagal start ("Docker Desktop is unable to start"). Tanpa DB, `/health/database` sudah terbukti mengembalikan 503 `DATABASE_UNAVAILABLE`. Setelah Docker hidup: jalankan `docker compose up -d`, lalu pastikan `/health/database` = 200.
 
 ---
@@ -67,7 +69,7 @@ M4 Production     : F12 → F13 → F14
 - [x] Helper `toBaseUnit` / `fromBaseUnit` / `parseBaseUnits` (bigint) + jembatan `toDbAmount`/`fromDbAmount` + unit test
 - [x] Repository: audit-log, network, address (+ balance). Repository entitas lain dibuat di fase yang memakainya
 - [x] Audit log insert-only: repository tanpa update/delete **dan** trigger DB yang menolak UPDATE/DELETE/TRUNCATE; metadata otomatis di-redact
-- [ ] **Terapkan migrasi + seed ke database & jalankan test DB** (menunggu `scripts/db/native-setup.sql` dijalankan)
+- [x] Migrasi + seed diterapkan ke PostgreSQL 16 native (seed idempoten), 12 test DB lulus, `/health/database` = 200
 
 **DoD:** migrasi bersih dari nol, seed jalan, unit test konversi jumlah lulus (termasuk edge case 18 desimal).
 
@@ -258,4 +260,4 @@ M4 Production     : F12 → F13 → F14
 | 2026-10-01 | F0 | ADR-003/008/009: key dipegang SUPER_ADMIN di Key Vault terenkripsi |
 | 2026-10-01 | F0 | ADR-001/002/004–007 Accepted: TypeScript stack, EVM Sepolia, internal use, >3 operator |
 | 2026-10-01 | F1 | Monorepo + shared/backend/frontend, 49 test hijau. Pending: verifikasi Docker (Docker Desktop gagal start) |
-| 2026-10-02 | F2 | Schema + migrasi + seed + repository, 107 test hijau (12 test DB di-skip). Dev DB: PostgreSQL 16 native di port 5433 (pengganti Docker) |
+| 2026-10-02 | F2 | Selesai. Schema + migrasi + seed + repository; 119 test hijau termasuk 12 test DB (audit log append-only, constraint, uint256). Dev DB: PostgreSQL 16 native port 5433 |

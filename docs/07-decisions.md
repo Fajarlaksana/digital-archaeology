@@ -103,7 +103,7 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. Semua ADR-001 s/d
   3. URL RPC **tidak** disimpan di DB, karena biasanya mengandung API key. Tabel `networks.rpc_url_env` hanya menyimpan **nama** env var-nya (misalnya `SEPOLIA_RPC_URL`).
   4. Prisma 7: client di-generate ke `backend/src/generated/prisma` (tidak di-commit, dibuat ulang saat `pnpm install`), koneksi lewat `@prisma/adapter-pg`, dan konfigurasinya di `backend/prisma.config.ts` yang membaca `.env` root.
   5. Repository mengonversi `Decimal` ↔ `bigint` di batas lapisan (`repositories/amount.ts`), jadi service dan domain hanya melihat `bigint`.
-  6. Test DB memakai database terpisah `<nama>_test` yang di-reset (`prisma migrate reset`) setiap kali test jalan. Setup test menolak me-reset database yang namanya tidak berakhiran `_test`.
+  6. Setiap kali test jalan, setup **membuat database baru** bernama unik (`<nama>_test_<waktu>_<acak>`), menerapkan migrasi dengan `prisma migrate deploy` (hanya menambah), lalu menghapus **hanya** database itu setelah test selesai. Tidak ada database yang sudah ada (dev, maupun milik proyek lain di server yang sama) yang di-reset atau disentuh. `prisma migrate reset` sengaja tidak dipakai.
 - **Alasan:** pertahanan berlapis. Bug di aplikasi atau akun DB yang bocor tetap tidak bisa melanggar aturan inti.
 
 ## ADR-011 — Database dev: PostgreSQL native (sementara)
@@ -111,7 +111,9 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. Semua ADR-001 s/d
 - **Tanggal:** 2026-10-02
 - **Konteks:** Docker Desktop di mesin dev gagal start. PostgreSQL 16 (port 5433) dan 18 (port 5432) sudah terpasang native.
 - **Keputusan:** dev memakai PostgreSQL **16 native di port 5433**. Setup DB dilakukan dengan `scripts/db/native-setup.sql`. Docker tetap didukung, dan port host-nya bisa diatur lewat `POSTGRES_HOST_PORT` karena 5432 sudah terpakai.
-- **Catatan keamanan:** instance native mendengarkan di `0.0.0.0`. Pastikan `pg_hba.conf` hanya mengizinkan `127.0.0.1/::1`, karena DB vault (`da_vault`) juga akan ada di sini.
+- **Catatan keamanan:** instance native mendengarkan di `0.0.0.0`, tetapi `pg_hba.conf` sudah diperiksa (2026-10-02) dan hanya mengizinkan `127.0.0.1/32` dan `::1/128` dengan `scram-sha-256`, jadi koneksi dari luar ditolak. Jangan menambah aturan `host` untuk jaringan lain, karena DB vault (`da_vault`) juga ada di sini.
+- **Isolasi terverifikasi:** user `da` ditolak saat connect ke `da_vault` (`permission denied ... CONNECT privilege`).
+- **Akses superuser:** password `postgres` PG 16 di-reset pada 2026-10-02 dan disimpan di `%APPDATA%\postgresql\pgpass.conf` (profil Windows user, dibaca otomatis oleh `psql`). Password itu tidak ada di repo. Server PG 16 ini juga dipakai proyek lain (`whale_tracker`).
 
 ---
 

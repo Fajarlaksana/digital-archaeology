@@ -2,7 +2,7 @@
 
 Sistem inventarisasi, verifikasi kepemilikan, dan pemulihan aset kripto yang sudah lama tidak aktif. Sistem ini **hanya** untuk address milik sendiri atau address yang punya mandat/otorisasi sah.
 
-> **Status saat ini:** Fase 1 selesai (fondasi monorepo). Satu hal tertunda: verifikasi `docker compose up -d` (Docker Desktop belum bisa start). Berikutnya: Fase 2 — Database & Domain Model.
+> **Status saat ini:** Fase 2 selesai (database & domain model, PostgreSQL 16 native). Berikutnya: Fase 3 — Autentikasi & RBAC. Tertunda: verifikasi Docker (opsional).
 > Update baris ini setiap kali sebuah fase selesai (lihat [docs/03-roadmap.md](docs/03-roadmap.md)).
 
 ---

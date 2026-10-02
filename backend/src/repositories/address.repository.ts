@@ -26,7 +26,8 @@ export interface AssetBalance {
 
 export function createAddressRepository(db: Database) {
   return {
-    create(input: NewAddress): Promise<Address> {
+    // async so validation failures surface as a rejected promise, like DB errors do.
+    async create(input: NewAddress): Promise<Address> {
       const ownerReference = input.ownerReference.trim()
       if (!ownerReference) throw new Error('ownerReference is required (CLAUDE.md rule 7)')
       return db.address.create({
