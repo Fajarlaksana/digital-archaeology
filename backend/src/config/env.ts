@@ -18,6 +18,14 @@ const envSchema = z.object({
   REDIS_URL: z.url({ protocol: /^rediss?$/ }),
   SEPOLIA_RPC_URL: optional(z.url({ protocol: /^https?$/ })),
 
+  // --- Scanner (Phase 5) ---
+  /** Etherscan API v2 key (one key covers all supported EVM chains). Scans refuse to start without it. */
+  EXPLORER_API_KEY: optional(z.string().min(10).max(100)),
+  EXPLORER_API_URL: z.url({ protocol: /^https$/ }).default('https://api.etherscan.io/v2/api'),
+  /** Etherscan free tier allows 5 calls/second; stay below it. */
+  EXPLORER_RATE_LIMIT_PER_SECOND: z.coerce.number().min(0.5).max(50).default(4),
+  INACTIVITY_THRESHOLD_DAYS: z.coerce.number().int().min(1).max(36_500).default(730),
+
   // --- Auth (Phase 3) ---
   /** Origin of the web UI. State-changing requests from any other Origin are rejected (CSRF). */
   APP_ORIGIN: z.url({ protocol: /^https?$/ }).default('http://127.0.0.1:5173'),

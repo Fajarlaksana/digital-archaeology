@@ -74,10 +74,10 @@ describe('GET /health/database', () => {
 })
 
 describe('GET /health/rpc', () => {
-  it('is a stub until Phase 5', async () => {
+  it('reports not_configured when no chain services are wired', async () => {
     const res = await (await makeApp()).inject({ method: 'GET', url: '/health/rpc' })
     expect(res.statusCode).toBe(200)
-    expect(res.json().status).toBe('not_implemented')
+    expect(res.json()).toEqual({ status: 'not_configured', networks: [] })
   })
 })
 

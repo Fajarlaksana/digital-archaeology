@@ -118,18 +118,21 @@ M4 Production     : F12 → F13 → F14
 
 **Tujuan:** inti M1, membaca data blockchain secara andal.
 
-- [ ] Interface `ChainAdapter` (lihat 02-analysis bagian 3), `BalanceProvider`, `ActivityProvider`
-- [ ] Implementasi EVM dengan viem: saldo native, saldo ERC-20, nonce
-- [ ] Activity provider via explorer API: `last_incoming_at`, `last_outgoing_at`, jumlah tx masuk/keluar
-- [ ] Silang cek: jika nonce RPC ≠ jumlah tx keluar menurut indexer, beri `review_flag`
-- [ ] Analyzer: `inactive_days`, `activity_status` berdasarkan threshold konfigurasi
-- [ ] Job BullMQ `SCAN_AUTHORIZED_ADDRESSES` dengan retry + exponential backoff, rate limit per provider
-- [ ] Simpan `scans` + `scan_results` (histori) dan update status di `addresses`
-- [ ] `POST /api/scans`, `GET /api/scans`, `GET /api/addresses/:id/activity`
-- [ ] Halaman Scans (buat scan, progres, hasil)
-- [ ] Unit test analyzer dengan mock adapter, dan integration test terhadap Sepolia (dipisah, opsional di CI)
+- [x] Interface `ChainAdapter` (validasi), `ChainReader` (RPC), `ActivityProvider` (explorer) di `backend/src/chains`
+- [x] `ChainReader` EVM dengan viem: saldo native, saldo ERC-20 (`balanceOf`), nonce, chain id, block; error dipetakan ke `RPC_TIMEOUT` / `RPC_RATE_LIMIT` / `BALANCE_READ_FAILED` tanpa URL
+- [x] Activity provider Etherscan API v2: tx normal + internal + transfer token; `first/last_incoming/last_outgoing`, jumlah tx masuk/keluar; pagination s.d. 10.000/aksi (lebih dari itu → `HISTORY_TRUNCATED`); throttle + retry backoff
+- [x] Silang cek nonce RPC vs jumlah tx keluar → `review_flag` + `review_note` (`NONCE_MISMATCH`, `HISTORY_TRUNCATED`, `BALANCE_WITHOUT_HISTORY`)
+- [x] Analyzer (pure): basis **transaksi keluar** (ADR-015), `inactive_days`, `activity_status`, `balance_status`
+- [x] Job BullMQ (`scans`, concurrency 1, jobId = scanId); proses idempoten, bisa dilanjutkan setelah crash; error per address tidak menghentikan scan; scan tidak pernah macet `RUNNING`
+- [x] `scans` + `scan_results` (histori) + update `addresses` dan `balances` dalam satu transaksi per address; address arsip tidak di-scan
+- [x] Endpoint `POST/GET /api/scans`, `GET /api/scans/:id`, `/results?filter=all|inactive|criteria|review|failed`, `GET /api/addresses/:id/activity`, `/balances`; `/health/rpc` memeriksa chain id + block
+- [x] Halaman Scans (form, progres dengan polling, daftar) + detail scan (tab filter) + saldo & riwayat di detail address
+- [x] Unit test analyzer/provider/reader dengan data tiruan; integration test end-to-end dengan chain tiruan; test Sepolia live (`tests/integration/chain/sepolia.live.test.ts`, otomatis skip tanpa key)
+- [ ] **Verifikasi live** dengan wallet testnet sendiri (butuh `SEPOLIA_RPC_URL` + `EXPLORER_API_KEY` di `.env`)
 
 **DoD:** scan atas wallet testnet milik sendiri menghasilkan saldo dan tanggal aktivitas yang **cocok dengan explorer**, scan ulang menghasilkan data identik, dan error RPC tercatat tanpa membuat seluruh scan crash.
+
+> **Status 2026-10-02:** kode selesai dan 305 test hijau. "Error RPC tidak membuat scan crash" sudah terbukti lewat test. **Belum terbukti:** kecocokan dengan explorer pada wallet sungguhan, karena key Sepolia belum diisi. Setelah key diisi: jalankan `pnpm --filter backend test` (3 test live ikut berjalan), lalu scan wallet testnet sendiri dan bandingkan saldo/tanggal dengan sepolia.etherscan.io.
 
 ---
 
@@ -273,6 +276,7 @@ M4 Production     : F12 → F13 → F14
 | 2026-10-01 | F0 | ADR-001/002/004–007 Accepted: TypeScript stack, EVM Sepolia, internal use, >3 operator |
 | 2026-10-01 | F1 | Monorepo + shared/backend/frontend, 49 test hijau. Pending: verifikasi Docker (Docker Desktop gagal start) |
 | 2026-10-02 | F1 | Docker Desktop (Hyper-V) hidup: `docker compose up -d` terverifikasi (port 5434), dev DB pindah ke Docker (ADR-013) |
+| 2026-10-02 | F5 | Kode selesai: scanner RPC+Etherscan, analyzer basis transaksi keluar, BullMQ, UI scans; 305 test hijau. Tertunda: verifikasi live (key Sepolia) |
 | 2026-10-02 | F4 | Selesai. Networks, ChainAdapter EVM, inventaris address, arsip, import CSV preview→simpan; 257 test hijau |
 | 2026-10-02 | F3 | Selesai. Auth + RBAC + MFA + Users UI, 187 test hijau |
 | 2026-10-02 | F2 | Selesai. Schema + migrasi + seed + repository; 119 test hijau termasuk 12 test DB (audit log append-only, constraint, uint256). Dev DB: PostgreSQL 16 native port 5433 |

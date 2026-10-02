@@ -2,7 +2,7 @@
 
 Sistem inventarisasi, verifikasi kepemilikan, dan pemulihan aset kripto yang sudah lama tidak aktif. Sistem ini **hanya** untuk address milik sendiri atau address yang punya mandat/otorisasi sah.
 
-> **Status saat ini:** Fase 4 selesai (networks, inventaris address, import CSV). Milestone M1 tinggal Fase 5–6. Berikutnya: **Fase 5 — Scanner & Activity Analyzer** (butuh RPC URL Sepolia + Etherscan API key).
+> **Status saat ini:** Fase 5 selesai secara kode (scanner + analyzer + UI). Verifikasi live menunggu `SEPOLIA_RPC_URL` dan `EXPLORER_API_KEY` di `.env`. Berikutnya: **Fase 6 — Valuasi & Dashboard** (penutup Milestone M1).
 > Update baris ini setiap kali sebuah fase selesai (lihat [docs/03-roadmap.md](docs/03-roadmap.md)).
 
 ---

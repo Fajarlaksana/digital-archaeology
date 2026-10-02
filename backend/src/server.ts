@@ -2,6 +2,8 @@ import { createLogger } from '@da/shared'
 import { buildApp } from './app'
 import { loadEnvFile, parseEnv, type Env } from './config/env'
 import { checkDatabase, createPrismaClient } from './lib/prisma'
+import { createChainClientFactory } from './chains/clients'
+import { createScanQueue } from './jobs/scan-queue'
 import { createServices } from './services'
 
 loadEnvFile()
@@ -21,6 +23,20 @@ const services = createServices(db, {
   sessionTtlMs: env.SESSION_TTL_HOURS * 3_600_000,
   sessionIdleMs: env.SESSION_IDLE_MINUTES * 60_000,
   networkMode: env.NETWORK_MODE,
+  clientsFor: createChainClientFactory({
+    explorerApiKey: env.EXPLORER_API_KEY,
+    explorerApiUrl: env.EXPLORER_API_URL,
+    explorerRatePerSecond: env.EXPLORER_RATE_LIMIT_PER_SECOND,
+    readEnv: (name) => process.env[name] || undefined,
+  }),
+  enqueueScan: (scanId) => scanQueue.enqueue(scanId),
+  defaultThresholdDays: env.INACTIVITY_THRESHOLD_DAYS,
+  logger,
+})
+const scanQueue = createScanQueue({
+  redisUrl: env.REDIS_URL,
+  process: (scanId) => services.scans.process(scanId),
+  logger,
 })
 const app = await buildApp({ env, logger, checkDatabase: () => checkDatabase(db), services })
 
@@ -31,6 +47,7 @@ if (env.NETWORK_MODE === 'mainnet') {
 async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, 'SHUTDOWN')
   await app.close()
+  await scanQueue.close()
   await db.$disconnect()
   process.exit(0)
 }

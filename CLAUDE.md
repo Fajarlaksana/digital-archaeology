@@ -30,10 +30,13 @@ Kebutuhan lengkap: `system_analysis_digital_archaeology.md`. Revisi & keputusan:
 - Endpoint baru wajib: guard permission, validasi body dengan Zod, dan masuk ke matriks test role × endpoint.
 - Integrasi chain melalui interface `ChainAdapter` (`backend/src/chains`), dipilih dengan `chainAdapterFor(chainType)`. Implementasi pertama: EVM (viem) di testnet Sepolia. Jangan memvalidasi address di luar adapter.
 - Address tidak pernah dihapus, hanya diarsipkan (`archived_at`). Query untuk scan atau proses lain wajib mengecualikan address yang diarsipkan.
+- Baca blockchain hanya lewat `ChainReader` (RPC) dan `ActivityProvider` (explorer) dari `chainClients` (`backend/src/chains/clients.ts`). Inaktivitas dihitung dari transaksi KELUAR (ADR-015). Dalam test pakai `tests/integration/fake-chain.ts`, jangan memanggil jaringan sungguhan (kecuali `*.live.test.ts`).
+- Jangan pernah memasukkan URL RPC atau API key ke pesan error atau log.
 
 ## Perintah
 
 - Install: `pnpm install` (build script dependency harus diizinkan di `allowBuilds` pada `pnpm-workspace.yaml`)
+- Worker scan (BullMQ) berjalan di proses backend dan butuh Redis.
 - Infra lokal: `docker compose up -d`. Postgres di port host **5434** (`POSTGRES_HOST_PORT`) dan Redis 6379. DB `digital_archaeology` (user `da`), `da_vault` (user `da_vault`). Lihat ADR-013
 - Dev (backend :3000 + frontend :5173): `pnpm dev`
 - Test semua: `pnpm test` · satu package: `pnpm --filter backend test`

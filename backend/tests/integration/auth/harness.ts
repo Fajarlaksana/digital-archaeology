@@ -9,6 +9,7 @@ import { newTotpSecret, totpCodeAt } from '../../../src/auth/totp'
 import type { Role } from '../../../src/generated/prisma/client'
 import type { Database } from '../../../src/lib/prisma'
 import { createServices } from '../../../src/services'
+import { createFakeChain, type FakeChain } from '../fake-chain'
 
 export const TEST_MFA_KEY = Buffer.alloc(32, 3).toString('base64')
 export const PASSWORD = 'correct horse battery staple'
@@ -17,7 +18,7 @@ export const APP_ORIGIN = 'http://127.0.0.1:5173'
 /** One app per test: own clock, own rate limiters, captured log output. */
 export async function createHarness(
   db: Database,
-  options: { networkMode?: 'testnet' | 'mainnet' } = {},
+  options: { networkMode?: 'testnet' | 'mainnet'; chain?: FakeChain } = {},
 ) {
   let current = new Date('2026-10-02T08:00:00Z')
   const now = () => current
@@ -32,12 +33,20 @@ export async function createHarness(
       },
     }),
   })
+  const chain = options.chain ?? createFakeChain()
+  const enqueued: string[] = []
   const services = createServices(db, {
     mfaEncryptionKey: TEST_MFA_KEY,
     sessionTtlMs: 12 * 3_600_000,
     sessionIdleMs: 30 * 60_000,
     networkMode: options.networkMode ?? 'testnet',
     isEnvSet: (name) => name === 'CONFIGURED_RPC_URL',
+    clientsFor: chain.factory,
+    enqueueScan: async (scanId) => {
+      enqueued.push(scanId)
+    },
+    defaultThresholdDays: 730,
+    logger,
     now,
   })
   const app: FastifyInstance = await buildApp({
@@ -56,6 +65,13 @@ export async function createHarness(
 
   return {
     app,
+    services,
+    chain,
+    enqueued,
+    /** Runs every queued scan to completion (stands in for the BullMQ worker). */
+    async runQueuedScans() {
+      while (enqueued.length > 0) await services.scans.process(enqueued.shift()!)
+    },
     logs: () => logLines.join(''),
     advance(ms: number) {
       current = new Date(current.getTime() + ms)

@@ -11,12 +11,15 @@ import { LoginPage } from './pages/LoginPage'
 import { MfaPage } from './pages/MfaPage'
 import { NetworksPage } from './pages/NetworksPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
+import { ScanDetailPage } from './pages/ScanDetailPage'
+import { ScansPage } from './pages/ScansPage'
 import { UsersPage } from './pages/UsersPage'
 
 const PAGES: Record<string, () => React.JSX.Element> = {
   '/users': UsersPage,
   '/networks': NetworksPage,
   '/addresses': AddressesPage,
+  '/scans': ScansPage,
 }
 
 /** Direct URL access to a page the user may not see sends them home (the API denies it anyway). */
@@ -51,6 +54,14 @@ export function App() {
             element={
               <RequirePermission permission="addresses:read">
                 <AddressDetailPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/scans/:id"
+            element={
+              <RequirePermission permission="scans:read">
+                <ScanDetailPage />
               </RequirePermission>
             }
           />

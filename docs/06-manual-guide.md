@@ -100,20 +100,43 @@ Aturan address EVM:
 - **Ubah** label atau owner reference. Setiap perubahan tercatat dengan nilai sebelum dan sesudah.
 - **Arsipkan** address yang tidak dipakai lagi. Address hilang dari daftar dan tidak ikut di-scan, tetapi riwayatnya tetap ada. Lihat lewat filter **Tampilkan → Diarsipkan**, lalu **Pulihkan dari arsip** bila perlu. Address yang diarsipkan tidak bisa diubah sebelum dipulihkan.
 
-## 6. Menjalankan scan · *Fase 5* · ANALYST
+## 6. Menjalankan scan · *Fase 5* ✅ · ANALYST (lihat: semua role)
 
-1. Menu **Scans**, lalu **Scan Baru**.
-2. Pilih network, threshold tidak aktif (misalnya 730 hari), dan rentang saldo minimum/maksimum.
-3. Klik **Mulai**. Progres tampil di halaman, dan scan bisa ditinggal.
-4. Setelah selesai, buka hasilnya. Status per address:
+### 6.1 Prasyarat (pengelola server)
+Isi di `.env` server, lalu restart backend:
+- `SEPOLIA_RPC_URL`: URL RPC Sepolia dari Alchemy/Infura. Nama variabel ini harus sama dengan "Env var RPC" di menu Networks.
+- `EXPLORER_API_KEY`: API key Etherscan (berlaku juga untuk Sepolia).
 
-| Status | Arti |
-|--------|------|
-| ACTIVE / INACTIVE | Ada / tidak ada aktivitas dalam periode threshold |
-| EMPTY / HAS_BALANCE | Saldo nol / ada saldo |
-| ⚠ Requires review | Data RPC dan explorer tidak cocok, perlu dicek manual |
+Cek di `http://127.0.0.1:3000/health/rpc`: status `ok` berarti siap. Jika belum dikonfigurasi, tombol **Mulai scan** menampilkan pesan yang menyebut variabel mana yang kurang.
 
-Scan juga bisa berjalan otomatis sesuai jadwal di **Settings → Scheduler**.
+### 6.2 Membuat scan
+1. Menu **Scans**, isi form **Scan baru**:
+   - **Network.**
+   - **Tidak aktif ≥ (hari)**, default 730 = 2 tahun.
+   - **Saldo minimum/maksimum** (opsional, dalam satuan aset native, misalnya `0.01`). Rentang ini hanya untuk menandai hasil "sesuai kriteria"; semua address tetap di-scan.
+2. Klik **Mulai scan**. Halaman detail terbuka dan progres diperbarui otomatis. Halaman boleh ditinggal karena scan berjalan di server.
+3. Hanya satu scan per network yang bisa berjalan pada satu waktu. Address yang **diarsipkan** tidak ikut di-scan.
+
+### 6.3 Cara sistem menilai "tidak aktif"
+- Dihitung dari **transaksi keluar terakhir**, yaitu transaksi yang hanya bisa dibuat pemegang private key.
+- Token atau ETH yang **masuk** (termasuk airdrop spam) **tidak** membuat wallet dianggap aktif.
+- Address yang belum pernah mengirim apa pun dihitung sejak aktivitas pertamanya.
+- Address tanpa riwayat sama sekali berstatus **INACTIVE** dengan "hari tidak aktif" kosong.
+
+### 6.4 Membaca hasil
+Tab di halaman detail scan: **Semua**, **Tidak aktif**, **Sesuai kriteria** (tidak aktif + saldo native dalam rentang), **Perlu review**, **Gagal**.
+
+| Tanda | Arti | Tindakan |
+|-------|------|----------|
+| INACTIVE / ACTIVE | Lewat / belum lewat threshold sejak transaksi keluar terakhir | — |
+| perlu review: `NONCE_MISMATCH` | Jumlah transaksi keluar menurut node (nonce) ≠ menurut explorer | Cek manual di explorer; bisa juga smart-contract wallet |
+| perlu review: `HISTORY_TRUNCATED` | Riwayat > 10.000 transaksi, sehingga hitungan tidak lengkap | Cek manual |
+| perlu review: `BALANCE_WITHOUT_HISTORY` | Ada saldo tetapi tidak ada transaksi (misalnya withdrawal validator) | Cek manual |
+| Gagal: `RPC_TIMEOUT` / `RPC_RATE_LIMIT` / ... | Address gagal dibaca; data lamanya tidak berubah | Jalankan scan ulang nanti |
+
+Detail address menampilkan **saldo per aset** (angka persis, tanpa pembulatan) dan **riwayat scan** (jumlah tx masuk/keluar, nonce, tanggal masuk/keluar terakhir).
+
+Scan terjadwal otomatis menyusul di Fase 6.
 
 ## 7. Dashboard & laporan · *Fase 6* · semua role
 

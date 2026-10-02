@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { useAuth } from '../auth/useAuth'
 import { Badge, Button, ErrorMessage, Field } from '../components/ui'
-import { addressesApi, type PublicAddress } from '../services/api'
+import { addressesApi, scansApi, type PublicAddress } from '../services/api'
 import { ADDRESSES_KEY, ActivityBadge } from './AddressesPage'
 
 export function AddressDetailPage() {
@@ -141,9 +141,8 @@ function Detail({ address: a, canManage }: { address: PublicAddress; canManage: 
         <ErrorMessage error={archive.error} />
       </section>
 
-      <section className="mt-6 rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">
-        Saldo per aset dan riwayat aktivitas muncul setelah scanner dibangun (Fase 5).
-      </section>
+      <BalancesSection addressId={a.id} />
+      <HistorySection addressId={a.id} />
     </>
   )
 }
@@ -154,5 +153,105 @@ function Item({ label, children }: { label: string; children: React.ReactNode })
       <dt className="text-xs uppercase text-slate-500">{label}</dt>
       <dd className="mt-0.5">{children}</dd>
     </div>
+  )
+}
+
+function BalancesSection({ addressId }: { addressId: string }) {
+  const balances = useQuery({
+    queryKey: [...ADDRESSES_KEY, 'balances', addressId],
+    queryFn: () => scansApi.addressBalances(addressId),
+  })
+  return (
+    <section className="mt-6 rounded-lg border border-slate-200 bg-white p-4">
+      <h2 className="font-semibold">Saldo</h2>
+      <ErrorMessage error={balances.error} />
+      {balances.data?.length === 0 && (
+        <p className="mt-2 text-sm text-slate-500">
+          Belum ada data saldo. Jalankan scan untuk network ini.
+        </p>
+      )}
+      {balances.data && balances.data.length > 0 && (
+        <table className="mt-3 w-full text-left text-sm">
+          <thead className="text-xs uppercase text-slate-500">
+            <tr>
+              <th className="py-1">Aset</th>
+              <th className="py-1 text-right">Jumlah</th>
+              <th className="py-1 text-right">Diperbarui</th>
+            </tr>
+          </thead>
+          <tbody>
+            {balances.data.map((b) => (
+              <tr key={b.assetId} className="border-t border-slate-100">
+                <td className="py-1.5">
+                  <span className="font-medium">{b.symbol}</span>{' '}
+                  <span className="text-slate-500">{b.name}</span>
+                </td>
+                {/* Exact decimal string from the server — never parsed into a float. */}
+                <td className="py-1.5 text-right font-mono" title={`${b.quantity} base units`}>
+                  {b.formatted}
+                </td>
+                <td className="py-1.5 text-right text-xs text-slate-500">
+                  {new Date(b.updatedAt).toLocaleString('id-ID')}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  )
+}
+
+function HistorySection({ addressId }: { addressId: string }) {
+  const history = useQuery({
+    queryKey: [...ADDRESSES_KEY, 'activity', addressId],
+    queryFn: () => scansApi.addressActivity(addressId),
+  })
+  const date = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('id-ID') : '—')
+  return (
+    <section className="mt-6 rounded-lg border border-slate-200 bg-white p-4">
+      <h2 className="font-semibold">Riwayat scan</h2>
+      <ErrorMessage error={history.error} />
+      {history.data?.length === 0 && (
+        <p className="mt-2 text-sm text-slate-500">Belum pernah di-scan.</p>
+      )}
+      {history.data && history.data.length > 0 && (
+        <table className="mt-3 w-full text-left text-sm">
+          <thead className="text-xs uppercase text-slate-500">
+            <tr>
+              <th className="py-1">Waktu scan</th>
+              <th className="py-1">Status</th>
+              <th className="py-1">Hari tidak aktif</th>
+              <th className="py-1">Masuk / keluar terakhir</th>
+              <th className="py-1">Tx masuk / keluar · nonce</th>
+              <th className="py-1">Catatan</th>
+            </tr>
+          </thead>
+          <tbody>
+            {history.data.map((h) => (
+              <tr key={h.scanId} className="border-t border-slate-100">
+                <td className="py-1.5">
+                  <Link to={`/scans/${h.scanId}`} className="underline-offset-2 hover:underline">
+                    {new Date(h.scannedAt).toLocaleString('id-ID')}
+                  </Link>
+                </td>
+                <td className="py-1.5">{h.activityStatus}</td>
+                <td className="py-1.5">{h.inactiveDays ?? '—'}</td>
+                <td className="py-1.5 text-xs">
+                  {date(h.lastIncomingAt)} / {date(h.lastOutgoingAt)}
+                </td>
+                <td className="py-1.5 text-xs">
+                  {h.incomingTxCount ?? '—'} / {h.outgoingTxCount ?? '—'} · {h.nonce ?? '—'}
+                </td>
+                <td className="space-x-1 py-1.5">
+                  {h.errorCode && <Badge tone="red">{h.errorCode}</Badge>}
+                  {h.reviewFlag && <Badge tone="amber">perlu review</Badge>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
   )
 }

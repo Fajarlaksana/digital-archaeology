@@ -213,6 +213,8 @@ describe('Address detail', () => {
     mockBackend({
       'GET /api/auth/me': () => json(200, session('ANALYST', ANALYST)),
       [`GET /api/addresses/${ADDRESS.id}`]: () => json(200, { address: ADDRESS }),
+      [`GET /api/addresses/${ADDRESS.id}/balances`]: () => json(200, { balances: [] }),
+      [`GET /api/addresses/${ADDRESS.id}/activity`]: () => json(200, { history: [] }),
     })
     renderAt(`/addresses/${ADDRESS.id}`)
     expect(await screen.findByRole('heading', { name: ADDRESS.address })).toBeTruthy()

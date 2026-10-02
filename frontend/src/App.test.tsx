@@ -93,8 +93,8 @@ describe('permission-aware navigation', () => {
 
   it('renders the phase placeholder for a permitted page', async () => {
     mockBackend({ 'GET /api/auth/me': () => json(200, me('ANALYST')) })
-    renderAt('/scans')
-    expect(await screen.findByText('Halaman ini dibangun di Fase 5.')).toBeTruthy()
+    renderAt('/reports')
+    expect(await screen.findByText('Halaman ini dibangun di Fase 12.')).toBeTruthy()
   })
 })
 

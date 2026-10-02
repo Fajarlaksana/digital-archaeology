@@ -1,10 +1,13 @@
 import type { FastifyInstance } from 'fastify'
 import { AppError } from '@da/shared'
 import type { Env } from '../config/env'
+import type { RpcHealth } from '../services/chain-health'
 
 export interface HealthDeps {
   env: Pick<Env, 'NETWORK_MODE'>
   checkDatabase: () => Promise<number>
+  /** Absent in infrastructure-only tests. */
+  checkRpc?: () => Promise<RpcHealth>
 }
 
 export function registerHealthRoutes(app: FastifyInstance, deps: HealthDeps): void {
@@ -25,9 +28,10 @@ export function registerHealthRoutes(app: FastifyInstance, deps: HealthDeps): vo
     }
   })
 
-  // Real RPC connectivity check arrives with the chain adapter in Phase 5.
-  app.get('/health/rpc', async () => ({
-    status: 'not_implemented',
-    message: 'RPC health check is implemented in Phase 5',
-  }))
+  // Per-network: RPC reachable, chain id matches, latest block readable. Never exposes URLs.
+  app.get('/health/rpc', async (_request, reply) => {
+    if (!deps.checkRpc) return { status: 'not_configured', networks: [] }
+    const health = await deps.checkRpc()
+    return reply.status(health.status === 'degraded' ? 503 : 200).send(health)
+  })
 }

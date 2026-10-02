@@ -296,3 +296,103 @@ export const addressesApi = {
       { method: 'POST', body: { csv } },
     ),
 }
+
+// ─── Scans (Phase 5) ───
+
+export type ScanStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED'
+
+export interface PublicScan {
+  id: string
+  network: { id: string; name: string; displayName: string; nativeSymbol: string | null }
+  status: ScanStatus
+  thresholdDays: number
+  minimumBalance: string | null
+  maximumBalance: string | null
+  totalAddresses: number
+  processedAddresses: number
+  totalInactive: number
+  totalFailed: number
+  errorMessage: string | null
+  createdAt: string
+  startedAt: string | null
+  completedAt: string | null
+}
+
+export type ResultFilter = 'all' | 'inactive' | 'criteria' | 'review' | 'failed'
+
+export interface ScanResultItem {
+  addressId: string
+  address: string
+  label: string | null
+  activityStatus: 'UNKNOWN' | 'ACTIVE' | 'INACTIVE'
+  balanceStatus: string
+  inactiveDays: number | null
+  lastActivityAt: string | null
+  lastOutgoingAt: string | null
+  incomingTxCount: number | null
+  outgoingTxCount: number | null
+  nonce: number | null
+  reviewFlag: boolean
+  errorCode: string | null
+  nativeBalance: string | null
+  matchesCriteria: boolean
+}
+
+export interface AddressBalance {
+  assetId: string
+  symbol: string
+  name: string
+  isNative: boolean
+  decimals: number
+  quantity: string
+  formatted: string
+  updatedAt: string
+}
+
+export interface AddressScanHistory {
+  scanId: string
+  scannedAt: string
+  thresholdDays: number
+  activityStatus: string
+  balanceStatus: string
+  inactiveDays: number | null
+  lastIncomingAt: string | null
+  lastOutgoingAt: string | null
+  incomingTxCount: number | null
+  outgoingTxCount: number | null
+  nonce: number | null
+  reviewFlag: boolean
+  errorCode: string | null
+}
+
+export const scansApi = {
+  list: (page = 1) =>
+    apiFetch<{ items: PublicScan[]; total: number; page: number; pageSize: number }>(
+      `/api/scans?page=${page}&pageSize=20`,
+    ),
+  create: (input: {
+    networkId: string
+    thresholdDays?: number
+    minimumBalance?: string | null
+    maximumBalance?: string | null
+  }) =>
+    apiFetch<{ scan: PublicScan }>('/api/scans', { method: 'POST', body: input }).then(
+      (r) => r.scan,
+    ),
+  get: (id: string) => apiFetch<{ scan: PublicScan }>(`/api/scans/${id}`).then((r) => r.scan),
+  results: (id: string, filter: ResultFilter, page: number) =>
+    apiFetch<{ items: ScanResultItem[]; total: number; page: number; pageSize: number }>(
+      `/api/scans/${id}/results?filter=${filter}&page=${page}&pageSize=50`,
+    ),
+  addressBalances: (addressId: string) =>
+    apiFetch<{ balances: AddressBalance[] }>(`/api/addresses/${addressId}/balances`).then(
+      (r) => r.balances,
+    ),
+  addressActivity: (addressId: string) =>
+    apiFetch<{ history: AddressScanHistory[] }>(`/api/addresses/${addressId}/activity`).then(
+      (r) => r.history,
+    ),
+}
+
+export const isScanRunning = (scan: Pick<PublicScan, 'status'>) =>
+  scan.status === 'QUEUED' || scan.status === 'RUNNING'

@@ -10,3 +10,5 @@ allowBuilds:
   '@prisma/engines': true
   prisma: true
   argon2: true
+  # Optional native accelerator for msgpackr (BullMQ); the pure-JS fallback is used instead.
+  msgpackr-extract: false

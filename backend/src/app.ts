@@ -8,6 +8,7 @@ import { registerAddressRoutes } from './controllers/addresses'
 import { registerAuthRoutes } from './controllers/auth'
 import { registerHealthRoutes } from './controllers/health'
 import { registerNetworkRoutes } from './controllers/networks'
+import { registerScanRoutes } from './controllers/scans'
 import { registerUserRoutes } from './controllers/users'
 import type { AppServices } from './services'
 
@@ -75,7 +76,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     reply.status(404).send(toErrorBody('NOT_FOUND', 'Route not found', request.id)),
   )
 
-  registerHealthRoutes(app, deps)
+  registerHealthRoutes(app, {
+    env: deps.env,
+    checkDatabase: deps.checkDatabase,
+    checkRpc: deps.services?.checkRpc,
+  })
 
   if (deps.services) {
     const { services, env } = deps
@@ -94,6 +99,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     registerUserRoutes(app, { users: services.users, guards })
     registerNetworkRoutes(app, { networks: services.networks, guards })
     registerAddressRoutes(app, { addresses: services.addresses, guards })
+    registerScanRoutes(app, { scans: services.scans, guards })
   }
 
   return app

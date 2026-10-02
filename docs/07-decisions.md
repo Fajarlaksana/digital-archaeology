@@ -2,7 +2,7 @@
 
 Setiap keputusan penting dicatat di sini agar alasannya tidak hilang. Status yang dipakai: **Proposed** (usulan), **Accepted** (diterima), **Superseded** (diganti oleh ADR lain).
 
-Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-014 sudah diputuskan (ADR-011 digantikan ADR-013).
+Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-015 sudah diputuskan (ADR-011 digantikan ADR-013).
 
 ---
 
@@ -147,6 +147,18 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-0
   5. Aset native dibuat bersamaan dengan network dalam satu transaksi.
 - **Catatan:** pencarian memakai `ILIKE` (`contains` insensitive). Jika inventaris sudah ratusan ribu baris, tambahkan index trigram (`pg_trgm`).
 
+## ADR-015 — Scanner: sumber data & definisi "tidak aktif" (Fase 5)
+- **Status:** Accepted
+- **Tanggal:** 2026-10-02
+- **Keputusan:**
+  1. **Basis inaktivitas = transaksi keluar terakhir** (keputusan pemilik projek). Hanya pemegang key yang bisa mengirim, jadi token spam atau airdrop yang masuk tidak "menghidupkan" wallet. Address yang tidak pernah mengirim diukur sejak aktivitas pertamanya. Address tanpa riwayat = `INACTIVE` dengan `inactive_days` null. Batas: `inactive_days >= threshold` → INACTIVE (SA 4.3).
+  2. **RPC = sumber kebenaran saldo dan nonce; Etherscan API v2 = riwayat.** Transaksi keluar hanya dihitung dari tx normal yang `from` = address (transfer token "dari" address bisa ditarik spender lewat `approve`, sehingga tidak dihitung). Transaksi masuk = tx normal + internal + transfer token ke address.
+  3. **Tanda review, bukan tebakan:** `NONCE_MISMATCH`, `HISTORY_TRUNCATED` (> 10.000 per jenis), dan `BALANCE_WITHOUT_HISTORY`. Address tetap diberi status, tetapi ditandai untuk dicek manusia.
+  4. **Satu scan per network pada satu waktu**, worker BullMQ concurrency 1, throttle Etherscan dibagi untuk semua network (default 4 request/detik). Proses idempoten (address yang sudah tercatat di-skip), sehingga job yang terhenti aman dilanjutkan. Kegagalan per address dicatat di `scan_results.error_code`, dan data lama address tidak ditimpa.
+  5. **Rahasia tidak bocor:** URL RPC dan API key tidak pernah masuk pesan error, log, maupun response. `/health/rpc` hanya menampilkan nama network, chain id, dan nomor blok.
+  6. Kriteria saldo (min/max) tidak menyaring address yang di-scan, hanya menandai hasil "sesuai kriteria" (inactive + saldo native dalam rentang).
+- **Batasan yang diketahui:** worker berjalan di proses yang sama dengan API. Jika beban naik, pindahkan ke proses terpisah (kode sudah terpisah di `jobs/scan-queue.ts`). Filter "sesuai kriteria" dihitung di memori dari hasil inactive; jika satu scan berisi puluhan ribu address, pindahkan saldo native ke kolom tersendiri.
+
 ---
 
 ## Jawaban pertanyaan terbuka (02-analysis bagian 5)
@@ -155,7 +167,7 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-0
 |---|-----------|---------|---------|
 | Q1 | Chain mayoritas wallet lama | EVM, sehingga ADR-002 tetap (Sepolia dulu) | 2026-10-01 |
 | Q2 | Sendiri / klien + format mandat | Sendiri / tim internal; `owner_reference` umumnya `SELF`/nama tim, dan dokumen mandat klien tidak diprioritaskan di MVP | 2026-10-01 |
-| Q3 | Provider RPC & explorer | *(putuskan sebelum Fase 5)* | |
+| Q3 | Provider RPC & explorer | RPC: bebas (Alchemy/Infura), dirujuk lewat nama env var; explorer: Etherscan API v2 | 2026-10-02 |
 | Q4 | Provider harga & mata uang | *(putuskan sebelum Fase 6)* | |
 | Q5 | Target deploy | *(putuskan sebelum Fase 14)* | |
 | Q6 | Jumlah operator | Lebih dari 3; maker-checker bisa ditegakkan penuh, tiap role dipegang orang berbeda | 2026-10-01 |
