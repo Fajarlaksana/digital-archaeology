@@ -15,7 +15,10 @@ export const PASSWORD = 'correct horse battery staple'
 export const APP_ORIGIN = 'http://127.0.0.1:5173'
 
 /** One app per test: own clock, own rate limiters, captured log output. */
-export async function createHarness(db: Database) {
+export async function createHarness(
+  db: Database,
+  options: { networkMode?: 'testnet' | 'mainnet' } = {},
+) {
   let current = new Date('2026-10-02T08:00:00Z')
   const now = () => current
   const logLines: string[] = []
@@ -33,11 +36,13 @@ export async function createHarness(db: Database) {
     mfaEncryptionKey: TEST_MFA_KEY,
     sessionTtlMs: 12 * 3_600_000,
     sessionIdleMs: 30 * 60_000,
+    networkMode: options.networkMode ?? 'testnet',
+    isEnvSet: (name) => name === 'CONFIGURED_RPC_URL',
     now,
   })
   const app: FastifyInstance = await buildApp({
     env: {
-      NETWORK_MODE: 'testnet',
+      NETWORK_MODE: options.networkMode ?? 'testnet',
       APP_ENV: 'test',
       APP_ORIGIN,
       SESSION_TTL_HOURS: 12,

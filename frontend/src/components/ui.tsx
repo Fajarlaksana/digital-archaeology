@@ -47,3 +47,22 @@ export function ErrorMessage({ error }: { error: unknown }) {
     </p>
   )
 }
+
+export function Badge({
+  tone,
+  children,
+}: {
+  tone: 'green' | 'blue' | 'red' | 'amber' | 'slate'
+  children: ReactNode
+}) {
+  const tones = {
+    green: 'bg-emerald-50 text-emerald-700',
+    blue: 'bg-sky-50 text-sky-700',
+    red: 'bg-red-50 text-red-700',
+    amber: 'bg-amber-50 text-amber-700',
+    slate: 'bg-slate-100 text-slate-600',
+  }
+  return (
+    <span className={`rounded px-2 py-0.5 text-xs font-medium ${tones[tone]}`}>{children}</span>
+  )
+}

@@ -1,10 +1,8 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { cleanup, fireEvent, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Permission, RoleName } from '@da/shared/rbac'
-import { App } from './App'
-import type { Me, PublicUser, SessionState } from './services/api'
+import type { Permission } from '@da/shared/rbac'
+import type { Me, SessionState } from './services/api'
+import { json, mockBackend, renderAt, session, user } from './test-utils'
 
 const PERMS: Record<'ANALYST' | 'ADMIN', Permission[]> = {
   ANALYST: [
@@ -18,48 +16,8 @@ const PERMS: Record<'ANALYST' | 'ADMIN', Permission[]> = {
   ADMIN: ['networks:read', 'networks:manage', 'users:read', 'users:manage', 'reports:read'],
 }
 
-function user(roles: RoleName[], overrides: Partial<PublicUser> = {}): PublicUser {
-  return {
-    id: crypto.randomUUID(),
-    email: `${roles[0]?.toLowerCase()}@dev.local`,
-    name: `Dev ${roles[0]}`,
-    roles,
-    status: 'ACTIVE',
-    mfaEnabled: false,
-    lastLoginAt: null,
-    createdAt: '2026-10-02T00:00:00.000Z',
-    ...overrides,
-  }
-}
-
 function me(role: 'ANALYST' | 'ADMIN', sessionState: SessionState = 'ACTIVE'): Me {
-  return { user: user([role]), sessionState, permissions: PERMS[role], reauthAt: null }
-}
-
-const json = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
-
-/** Fake backend: routes are matched on "METHOD /path". */
-function mockBackend(routes: Record<string, () => Response>) {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const key = `${init?.method ?? 'GET'} ${String(input)}`
-    if (key.startsWith('GET /health')) return json(200, { status: 'ok' })
-    const handler = routes[key]
-    return handler ? handler() : json(404, { error: { code: 'NOT_FOUND', message: key } })
-  })
-  vi.stubGlobal('fetch', fetchMock)
-  return fetchMock
-}
-
-function renderAt(path: string) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[path]}>
-        <App />
-      </MemoryRouter>
-    </QueryClientProvider>,
-  )
+  return session(role, PERMS[role], sessionState)
 }
 
 afterEach(() => {

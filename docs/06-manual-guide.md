@@ -56,25 +56,49 @@ Password diketik tanpa ditampilkan dan diminta dua kali. Pembuatan akun ini terc
 4. Anda tidak bisa mengubah role atau status akun Anda sendiri, dan tidak bisa mengubah akun SUPER_ADMIN.
 5. Semua perubahan tercatat di audit log beserta data sebelum dan sesudahnya.
 
-## 4. Menyiapkan network · *Fase 4* · ADMIN
+## 4. Networks & aset · *Fase 4* ✅ · ADMIN (lihat: semua role)
 
-1. Menu **Networks**, lalu **Tambah Network**.
-2. Isi nama, chain ID, dan native asset. RPC dan explorer diambil dari konfigurasi server.
-3. Menu **Settings**, lalu **Assets**: daftarkan token yang ingin dipantau (alamat kontrak, simbol, desimal).
+1. Menu **Networks** menampilkan setiap network beserta aset yang dipantau, status testnet/mainnet, dan apakah RPC sudah dikonfigurasi di server.
+2. **Tambah network**: isi nama slug (`holesky`), nama tampilan, chain ID, **nama env var RPC** (misalnya `HOLESKY_RPC_URL`, **bukan** URL-nya), URL explorer, serta aset native (simbol, nama, desimal).
+   - URL RPC disimpan di file `.env` server oleh pengelola sistem, karena biasanya berisi API key.
+   - Dari UI hanya network **testnet** yang bisa ditambahkan. Network mainnet ditolak selama server berjalan dengan `NETWORK_MODE=testnet`.
+3. **Tambah token ERC-20** (di kartu network): alamat kontrak, simbol, nama, dan desimal (0–36). Alamat kontrak diperiksa checksum-nya.
+4. **Nonaktifkan** network: address di network itu tidak bisa ditambah atau di-import (data lama tetap ada). Chain ID dan status testnet tidak bisa diubah setelah dibuat.
 
-## 5. Mendaftarkan address · *Fase 4* · ANALYST
+## 5. Mendaftarkan address · *Fase 4* ✅ · ANALYST (lihat: semua role)
 
-**Manual:** menu **Addresses**, lalu **Tambah**, isi address, network, label, dan **owner reference** (wajib, misalnya `SELF`, nomor kontrak, atau ID kasus).
+### 5.1 Tambah satu address
+Menu **Addresses**, lalu **Tambah address**. Pilih network, lalu isi address, label (opsional), dan **owner reference** (wajib, misalnya `SELF`, nomor kontrak, atau ID kasus).
 
-**Import CSV:** menu **Addresses**, lalu **Import CSV**. Format:
+Aturan address EVM:
+- Address huruf kecil semua diterima dan disimpan dalam bentuk checksum (huruf besar-kecil campuran).
+- Address yang huruf besar-kecilnya **tidak cocok** dengan checksum ditolak, karena hampir pasti salah ketik. Salin ulang dari sumbernya.
+- Zero address (`0x000…000`) ditolak.
 
-```csv
-address,network,label,owner_reference
-0xAbC...123,sepolia,Wallet lama 2019,SELF
-0xDeF...456,sepolia,Klien A,CASE-2026-001
-```
+### 5.2 Import CSV (preview dulu)
+1. Menu **Addresses**, lalu **Import CSV**. Unduh template jika perlu.
+2. Format file (maksimal 5.000 baris, 2 MB; kolom `label` opsional; header tidak peka huruf besar):
+   ```csv
+   address,network,label,owner_reference
+   0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed,sepolia,Wallet lama 2019,SELF
+   0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359,sepolia,Klien A,CASE-2026-001
+   ```
+3. Pilih file, lalu klik **Periksa**. Sistem menampilkan jumlah baris valid dan ditolak, ringkasan per alasan, serta tabel baris yang ditolak (nomor baris + alasan). **Belum ada yang disimpan.**
+4. Jika sudah sesuai, klik **Simpan N baris valid**. Baris yang ditolak tidak disimpan; perbaiki di file lalu import ulang.
 
-Setelah import, sistem menampilkan berapa baris yang diterima dan yang ditolak beserta alasannya.
+| Alasan ditolak | Artinya |
+|----------------|---------|
+| Format address salah | Bukan `0x` + 40 karakter hex |
+| Checksum salah | Huruf besar/kecil tidak cocok, kemungkinan salah ketik |
+| Network tidak dikenal / nonaktif | Nama di kolom `network` tidak ada di menu Networks, atau network-nya nonaktif |
+| owner_reference kosong | Wajib diisi |
+| Duplikat di file | Address yang sama muncul lebih dari sekali di file |
+| Sudah terdaftar | Address sudah ada di sistem (termasuk yang diarsipkan) |
+
+### 5.3 Detail, ubah, dan arsip
+- Klik address di tabel untuk membuka **detail**: status aktivitas, saldo, otorisasi, recovery, owner reference, dan link ke explorer.
+- **Ubah** label atau owner reference. Setiap perubahan tercatat dengan nilai sebelum dan sesudah.
+- **Arsipkan** address yang tidak dipakai lagi. Address hilang dari daftar dan tidak ikut di-scan, tetapi riwayatnya tetap ada. Lihat lewat filter **Tampilkan → Diarsipkan**, lalu **Pulihkan dari arsip** bila perlu. Address yang diarsipkan tidak bisa diubah sebelum dipulihkan.
 
 ## 6. Menjalankan scan · *Fase 5* · ANALYST
 

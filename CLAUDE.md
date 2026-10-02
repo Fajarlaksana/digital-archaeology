@@ -28,7 +28,8 @@ Kebutuhan lengkap: `system_analysis_digital_archaeology.md`. Revisi & keputusan:
 - Selalu pakai `createLogger` dari `@da/shared` dan lempar `AppError(code, ...)`. Jangan pakai `console.*` (lint error).
 - Role: `SUPER_ADMIN, ADMIN, ANALYST, REVIEWER, AUDITOR`. Endpoint memeriksa **permission** (bukan role) lewat `guards.permission('x:y')`. Peta role ke permission ada di `backend/src/auth/permissions.ts`. MFA wajib untuk SUPER_ADMIN/ADMIN/REVIEWER (ADR-012).
 - Endpoint baru wajib: guard permission, validasi body dengan Zod, dan masuk ke matriks test role × endpoint.
-- Integrasi chain melalui interface `ChainAdapter`. Implementasi pertama: EVM (viem) di testnet Sepolia.
+- Integrasi chain melalui interface `ChainAdapter` (`backend/src/chains`), dipilih dengan `chainAdapterFor(chainType)`. Implementasi pertama: EVM (viem) di testnet Sepolia. Jangan memvalidasi address di luar adapter.
+- Address tidak pernah dihapus, hanya diarsipkan (`archived_at`). Query untuk scan atau proses lain wajib mengecualikan address yang diarsipkan.
 
 ## Perintah
 

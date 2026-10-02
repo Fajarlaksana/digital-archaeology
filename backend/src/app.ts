@@ -4,8 +4,10 @@ import { ZodError } from 'zod'
 import { AppError, toErrorBody, type Logger } from '@da/shared'
 import { createGuards, registerAuth, type AuthPluginOptions } from './auth/plugin'
 import type { Env } from './config/env'
+import { registerAddressRoutes } from './controllers/addresses'
 import { registerAuthRoutes } from './controllers/auth'
 import { registerHealthRoutes } from './controllers/health'
+import { registerNetworkRoutes } from './controllers/networks'
 import { registerUserRoutes } from './controllers/users'
 import type { AppServices } from './services'
 
@@ -90,6 +92,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const guards = createGuards(authOptions)
     registerAuthRoutes(app, { auth: services.auth, guards, cookie: authOptions })
     registerUserRoutes(app, { users: services.users, guards })
+    registerNetworkRoutes(app, { networks: services.networks, guards })
+    registerAddressRoutes(app, { addresses: services.addresses, guards })
   }
 
   return app

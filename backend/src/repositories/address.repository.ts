@@ -1,10 +1,12 @@
-import type { ActivityStatus, Address } from '../generated/prisma/client'
+import type { ActivityStatus, Address, Network, Prisma } from '../generated/prisma/client'
 import type { Database } from '../lib/prisma'
 import { fromDbAmount, toDbAmount } from './amount'
 
+export type AddressWithNetwork = Address & { network: Network }
+
 export interface NewAddress {
   networkId: string
-  /** Already validated and canonicalised by the chain adapter (Phase 4). */
+  /** Already validated and canonicalised by the chain adapter. */
   address: string
   ownerReference: string
   label?: string | null
@@ -14,6 +16,10 @@ export interface NewAddress {
 export interface AddressQuery {
   networkId?: string
   activityStatus?: ActivityStatus
+  /** Case-insensitive match on address, label or owner reference. */
+  search?: string
+  includeArchived?: boolean
+  onlyArchived?: boolean
   skip?: number
   take?: number
 }
@@ -22,6 +28,24 @@ export interface AssetBalance {
   assetId: string
   /** Base units. */
   quantity: bigint
+}
+
+function whereFor(query: AddressQuery): Prisma.AddressWhereInput {
+  const search = query.search?.trim()
+  return {
+    networkId: query.networkId,
+    activityStatus: query.activityStatus,
+    archivedAt: query.onlyArchived ? { not: null } : query.includeArchived ? undefined : null,
+    ...(search
+      ? {
+          OR: [
+            { address: { contains: search, mode: 'insensitive' } },
+            { label: { contains: search, mode: 'insensitive' } },
+            { ownerReference: { contains: search, mode: 'insensitive' } },
+          ],
+        }
+      : {}),
+  }
 }
 
 export function createAddressRepository(db: Database) {
@@ -41,17 +65,65 @@ export function createAddressRepository(db: Database) {
       })
     },
 
+    /** Inserts many already-validated rows; rows that already exist are skipped. Returns count. */
+    async createMany(rows: NewAddress[]): Promise<number> {
+      if (rows.length === 0) return 0
+      const result = await db.address.createMany({
+        data: rows.map((row) => ({
+          networkId: row.networkId,
+          address: row.address,
+          ownerReference: row.ownerReference.trim(),
+          label: row.label ?? null,
+          createdById: row.createdById ?? null,
+        })),
+        skipDuplicates: true,
+      })
+      return result.count
+    },
+
+    findById(id: string): Promise<AddressWithNetwork | null> {
+      return db.address.findUnique({ where: { id }, include: { network: true } })
+    },
+
     findByNetworkAndAddress(networkId: string, address: string): Promise<Address | null> {
       return db.address.findUnique({ where: { networkId_address: { networkId, address } } })
     },
 
-    list(query: AddressQuery = {}): Promise<Address[]> {
-      return db.address.findMany({
-        where: { networkId: query.networkId, activityStatus: query.activityStatus },
-        orderBy: { createdAt: 'asc' },
-        skip: query.skip,
-        take: Math.min(query.take ?? 50, 500),
-      })
+    /** Which of the given (networkId, address) pairs are already registered (archived included). */
+    async existingKeys(pairs: Array<{ networkId: string; address: string }>): Promise<Set<string>> {
+      const found = new Set<string>()
+      for (let i = 0; i < pairs.length; i += 500) {
+        const rows = await db.address.findMany({
+          where: {
+            OR: pairs.slice(i, i + 500).map(({ networkId, address }) => ({ networkId, address })),
+          },
+          select: { networkId: true, address: true },
+        })
+        for (const r of rows) found.add(`${r.networkId}:${r.address}`)
+      }
+      return found
+    },
+
+    async list(query: AddressQuery = {}): Promise<{ items: AddressWithNetwork[]; total: number }> {
+      const where = whereFor(query)
+      const [items, total] = await db.$transaction([
+        db.address.findMany({
+          where,
+          include: { network: true },
+          orderBy: { createdAt: 'desc' },
+          skip: query.skip,
+          take: Math.min(query.take ?? 50, 500),
+        }),
+        db.address.count({ where }),
+      ])
+      return { items, total }
+    },
+
+    update(
+      id: string,
+      data: { label?: string | null; ownerReference?: string; archivedAt?: Date | null },
+    ): Promise<AddressWithNetwork> {
+      return db.address.update({ where: { id }, data, include: { network: true } })
     },
 
     async upsertBalance(addressId: string, assetId: string, quantity: bigint): Promise<void> {

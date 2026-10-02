@@ -2,7 +2,7 @@
 
 Setiap keputusan penting dicatat di sini agar alasannya tidak hilang. Status yang dipakai: **Proposed** (usulan), **Accepted** (diterima), **Superseded** (diganti oleh ADR lain).
 
-Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-013 sudah diputuskan (ADR-011 digantikan ADR-013).
+Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-014 sudah diputuskan (ADR-011 digantikan ADR-013).
 
 ---
 
@@ -135,6 +135,17 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-0
 - **Konteks:** Docker Desktop kini berjalan dengan backend Hyper-V.
 - **Keputusan:** dev memakai `docker compose`: Postgres di **port host 5434** (`POSTGRES_HOST_PORT`, karena 5432/5433 dipakai PostgreSQL native) dan Redis di 6379. Database terisolasi dari proyek lain di PostgreSQL native.
 - **Catatan:** PostgreSQL 16 native (port 5433) masih berisi database proyek ini dari Fase 2 dan tidak dipakai lagi. Hapus dengan `DROP DATABASE digital_archaeology; DROP DATABASE da_vault; DROP USER da; DROP USER da_vault;` jika sudah tidak dibutuhkan.
+
+## ADR-014 — Inventaris address (Fase 4)
+- **Status:** Accepted
+- **Tanggal:** 2026-10-02
+- **Keputusan:**
+  1. **Checksum EIP-55 ditegakkan:** address huruf campuran dengan checksum salah **ditolak** (kemungkinan salah ketik), bukan dikoreksi diam-diam. Address huruf kecil/besar semua diterima, lalu disimpan dalam bentuk checksum. Zero address ditolak. Validasi ada di `ChainAdapter.checkAddress` agar chain lain (Bitcoin) tinggal menambah adapter.
+  2. **Arsip, bukan hapus:** `addresses.archived_at`. Address arsip disembunyikan dari daftar dan tidak akan di-scan (Fase 5), tetapi histori scan, transaksi, dan audit tetap utuh. Address arsip bersifat read-only sampai dipulihkan.
+  3. **Import CSV dua langkah:** preview (tanpa menyimpan) lalu simpan. Saat menyimpan, server **memvalidasi ulang** file secara penuh (hasil preview dari client tidak dipercaya). Baris valid disimpan dengan `skipDuplicates`, jadi import ulang aman. Audit mencatat SHA-256 file, bukan isinya.
+  4. **Network:** `chainType`, `chainId`, dan `isTestnet` tidak bisa diubah setelah dibuat, supaya network testnet tidak bisa "dibalik" menjadi mainnet. Network mainnet hanya bisa dibuat jika `NETWORK_MODE=mainnet`, dan UI hanya membuat testnet.
+  5. Aset native dibuat bersamaan dengan network dalam satu transaksi.
+- **Catatan:** pencarian memakai `ILIKE` (`contains` insensitive). Jika inventaris sudah ratusan ribu baris, tambahkan index trigram (`pg_trgm`).
 
 ---
 

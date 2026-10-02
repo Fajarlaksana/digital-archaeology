@@ -100,13 +100,17 @@ M4 Production     : F12 → F13 → F14
 
 ## Fase 4 — Network & Address Inventory · M
 
-- [ ] CRUD `networks` (ADMIN) dan `assets`
-- [ ] Tambah address manual dengan validasi format dan checksum per chain, `owner_reference` wajib
-- [ ] Import CSV (`address, network, label, owner_reference`) dengan laporan baris yang ditolak
-- [ ] Halaman Networks, Addresses (tabel + filter), dan Address Detail (kerangka)
-- [ ] Audit log untuk tambah/ubah/hapus address
+- [x] Networks (ADMIN): list, tambah (beserta aset native), ubah, nonaktifkan; token ERC-20 dengan validasi kontrak. Network mainnet ditolak selama `NETWORK_MODE=testnet`; `isTestnet`/`chainId` tidak bisa diubah
+- [x] `ChainAdapter` + implementasi EVM (viem): validasi format, checksum EIP-55 (salah checksum = ditolak), zero address ditolak, disimpan dalam bentuk checksum
+- [x] Tambah address manual (ANALYST), `owner_reference` wajib (validasi API + CHECK DB)
+- [x] Ubah label/owner reference (audit before/after), **arsip & pulihkan** (bukan hapus; histori tetap utuh)
+- [x] Import CSV dengan **preview dulu** → simpan baris valid; validasi ulang di server saat simpan; maks. 5.000 baris / 2 MB; laporan per baris + ringkasan per alasan
+- [x] Halaman Networks, Addresses (filter network/arsip, pencarian, pagination, form tambah, panel import), Address Detail
+- [x] Audit: `NETWORK_CREATED/UPDATED`, `ASSET_CREATED`, `ADDRESS_CREATED/UPDATED/ARCHIVED/RESTORED`, `ADDRESSES_IMPORTED` (SHA-256 file)
 
 **DoD:** import CSV 100 baris campuran valid/invalid menghasilkan laporan yang benar, dan address tanpa `owner_reference` ditolak.
+
+> **Status 2026-10-02:** terpenuhi. Test import 100 baris (70 valid; 10 checksum salah, 5 network tak dikenal, 5 tanpa owner ref, 5 duplikat di file, 5 sudah terdaftar) menghasilkan laporan tepat; preview tidak menyimpan apa pun; import ulang tidak membuat duplikat. 257 test hijau.
 
 ---
 
@@ -269,5 +273,6 @@ M4 Production     : F12 → F13 → F14
 | 2026-10-01 | F0 | ADR-001/002/004–007 Accepted: TypeScript stack, EVM Sepolia, internal use, >3 operator |
 | 2026-10-01 | F1 | Monorepo + shared/backend/frontend, 49 test hijau. Pending: verifikasi Docker (Docker Desktop gagal start) |
 | 2026-10-02 | F1 | Docker Desktop (Hyper-V) hidup: `docker compose up -d` terverifikasi (port 5434), dev DB pindah ke Docker (ADR-013) |
+| 2026-10-02 | F4 | Selesai. Networks, ChainAdapter EVM, inventaris address, arsip, import CSV preview→simpan; 257 test hijau |
 | 2026-10-02 | F3 | Selesai. Auth + RBAC + MFA + Users UI, 187 test hijau |
 | 2026-10-02 | F2 | Selesai. Schema + migrasi + seed + repository; 119 test hijau termasuk 12 test DB (audit log append-only, constraint, uint256). Dev DB: PostgreSQL 16 native port 5433 |

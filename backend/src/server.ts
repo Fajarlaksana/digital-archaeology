@@ -20,6 +20,7 @@ const services = createServices(db, {
   mfaEncryptionKey: env.MFA_ENCRYPTION_KEY,
   sessionTtlMs: env.SESSION_TTL_HOURS * 3_600_000,
   sessionIdleMs: env.SESSION_IDLE_MINUTES * 60_000,
+  networkMode: env.NETWORK_MODE,
 })
 const app = await buildApp({ env, logger, checkDatabase: () => checkDatabase(db), services })
 

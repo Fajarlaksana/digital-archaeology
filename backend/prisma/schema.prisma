@@ -226,6 +226,8 @@ model Address {
   lastOutgoingAt      DateTime?           @map("last_outgoing_at")
   inactiveDays        Int?                @map("inactive_days")
   lastScannedAt       DateTime?           @map("last_scanned_at")
+  /// Archived addresses are hidden from lists and never scanned; history is kept (Phase 4).
+  archivedAt          DateTime?           @map("archived_at")
   createdById         String?             @map("created_by") @db.Uuid
   createdAt           DateTime            @default(now()) @map("created_at")
   updatedAt           DateTime            @updatedAt @map("updated_at")
@@ -241,6 +243,7 @@ model Address {
   @@unique([networkId, address])
   @@index([activityStatus])
   @@index([recoveryStatus])
+  @@index([archivedAt])
   @@map("addresses")
 }
 

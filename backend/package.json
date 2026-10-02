@@ -22,9 +22,11 @@
     "@prisma/adapter-pg": "~7.10.0",
     "@prisma/client": "~7.10.0",
     "argon2": "^0.45.1",
+    "csv-parse": "^7.0.3",
     "fastify": "^5.12.5",
     "otplib": "^13.5.0",
     "pg": "^8.23.1",
+    "viem": "^2.57.2",
     "zod": "^4.6.5"
   },
   "devDependencies": {
