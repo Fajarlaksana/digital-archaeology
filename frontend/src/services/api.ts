@@ -503,3 +503,70 @@ export function formatFiat(value: string | null | undefined, currency: string): 
   const shown = trimmed.length <= 2 ? fraction.slice(0, 2).padEnd(2, '0') : trimmed
   return `${currency === 'IDR' ? 'Rp' : '$'}${grouped}${sep}${shown}`
 }
+
+// ─── Key vault (Phase 7, SUPER_ADMIN) ───
+
+export interface VaultStatus {
+  initialized: boolean
+  unlocked: boolean
+  unlockedBy: string | null
+  expiresAt: string | null
+  unlockTtlMinutes: number
+}
+
+export interface VaultKey {
+  chainType: string
+  address: string
+  checksumAddress: string
+  keyType: 'PRIVATE_KEY' | 'DERIVED_FROM_MNEMONIC'
+  derivationPath: string | null
+  importedBy: string
+  createdAt: string
+  lastUsedAt: string | null
+  inventory: Array<{
+    addressId: string
+    label: string | null
+    archived: boolean
+    network: { id: string; displayName: string }
+  }>
+}
+
+export const vaultApi = {
+  status: () => apiFetch<VaultStatus>('/api/vault/status'),
+  keys: () => apiFetch<{ keys: VaultKey[] }>('/api/vault/keys').then((r) => r.keys),
+  init: (passphrase: string, recoveryPassphrase: string) =>
+    apiFetch<VaultStatus>('/api/vault/init', {
+      method: 'POST',
+      body: { passphrase, recoveryPassphrase },
+    }),
+  unlock: (passphrase: string) =>
+    apiFetch<VaultStatus>('/api/vault/unlock', { method: 'POST', body: { passphrase } }),
+  lock: () => apiFetch<VaultStatus>('/api/vault/lock', { method: 'POST', body: {} }),
+  changePassphrase: (currentPassphrase: string, newPassphrase: string) =>
+    apiFetch<VaultStatus>('/api/vault/passphrase', {
+      method: 'POST',
+      body: { currentPassphrase, newPassphrase },
+    }),
+  recover: (recoveryPassphrase: string, newPassphrase: string) =>
+    apiFetch<VaultStatus>('/api/vault/recover', {
+      method: 'POST',
+      body: { recoveryPassphrase, newPassphrase },
+    }),
+  importKey: (input: {
+    addressId: string
+    secretType: 'PRIVATE_KEY' | 'MNEMONIC'
+    secret: string
+    derivationPath: string | null
+  }) => apiFetch<{ key: VaultKey }>('/api/vault/keys', { method: 'POST', body: input }),
+  reveal: (addressId: string, passphrase: string, code: string) =>
+    apiFetch<{ privateKey: string }>('/api/vault/keys/reveal', {
+      method: 'POST',
+      body: { addressId, passphrase, code },
+    }),
+}
+
+export const reauthApi = {
+  /** Re-confirms the session (password + current authenticator code). */
+  reauth: (password: string, code: string) =>
+    apiFetch<void>('/api/auth/reauth', { method: 'POST', body: { password, code } }),
+}

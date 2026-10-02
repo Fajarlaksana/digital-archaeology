@@ -159,17 +159,17 @@ M4 Production     : F12 → F13 → F14
 **Tujuan:** service `signer/` berdiri, key bisa disimpan aman, dan kepemilikan terbukti. Fase ini dikerjakan lebih awal dari signing transaksi karena verifikasi kepemilikan sudah butuh vault.
 
 **7a — Key Vault (service `signer/`)**
-> Dikerjakan dalam sesi: **7a** fondasi signer ✅ · **7b** import/reveal/UI · **7c** ownership verification · **7d** review keamanan.
+> Dikerjakan dalam sesi: **7a** fondasi signer ✅ · **7b** import/reveal/UI ✅ · **7c** ownership verification · **7d** review keamanan.
 
 - [x] Package `signer/`: Fastify internal, **hanya loopback** (`SIGNER_ALLOW_NON_LOOPBACK` untuk override eksplisit), autentikasi HMAC-SHA256 (timestamp ±60 dtk, hash body, constant-time, anti-replay); hanya `GET /health` tanpa signature
 - [x] DB `da_vault` (Prisma schema terpisah, user DB terpisah): `vault_config` (singleton, CHECK), `vault_keys` (CHECK panjang IV/tag, address lower-case), `vault_events` (append-only trigger)
 - [x] Inisialisasi vault: passphrase utama + recovery passphrase (≥ 16 karakter, harus berbeda), Master Key acak 32 byte, dibungkus dua kali (Argon2id 64 MiB/3 → KEK, AES-256-GCM + AAD); vault tetap terkunci setelah init
 - [x] Unlock/lock di signer: MK hanya di memori (`Buffer`, ditimpa nol saat lock / auto-lock `VAULT_UNLOCK_TTL_MINUTES` / shutdown / crash); 5 passphrase salah → jeda 15 menit
-- [ ] Unlock dari UI dengan MFA + re-auth; lock otomatis saat logout SUPER_ADMIN (7b, di backend)
-- [ ] Import key (hex privkey, atau seed + derivation path → **hanya private key turunan yang disimpan**, ADR-017): derive address, cocokkan dengan inventory (`owner_reference` wajib), lalu enkripsi dengan AAD = address (7b)
+- [x] Endpoint `/api/vault/*` (permission `vault:manage` = SUPER_ADMIN saja), konfirmasi ulang password + TOTP ≤ 5 menit untuk semua aksi kecuali lock; vault terkunci otomatis saat SUPER_ADMIN logout; client signer ber-HMAC, signer mati → `SIGNER_UNAVAILABLE`
+- [x] Import key (hex privkey, atau seed BIP-39 tervalidasi + derivation path → **hanya private key turunan yang disimpan**, ADR-017): address turunan wajib sama dengan address inventaris (tidak diarsipkan, owner_reference ada), enkripsi dengan AAD = chain + address
 - [x] Ganti passphrase (rewrap MK) dan pemulihan dengan recovery passphrase (MK tetap sama, key lama tetap terbaca)
-- [ ] Reveal break-glass sesuai ADR-009 (flag `KEY_REVEAL_ENABLED`) (7b)
-- [ ] Halaman **Key Vault** (hanya SUPER_ADMIN): status lock, daftar address yang punya key (tanpa isi key), init, import, unlock, reveal (7b)
+- [x] Reveal break-glass (ADR-009): konfirmasi ulang + **kode TOTP baru** + passphrase vault (dibuka dari passphrase, bukan dari status unlock), maks. 3/jam, `no-store`, tercatat tanpa isi key, bisa dimatikan `KEY_REVEAL_ENABLED`
+- [x] Halaman **Key Vault**: status + hitung mundur, init (validasi + pernyataan recovery offline), buka/kunci, import, daftar key (tanpa isi key), reveal tersamar yang tertutup otomatis 60 detik (tidak bisa diperpanjang oleh re-render), ganti passphrase & recovery
 
 **7b — Ownership Verification**
 - [ ] Upload/registrasi dokumen otorisasi (simpan hash + file terenkripsi, atau hanya referensi eksternal)
@@ -284,6 +284,7 @@ M4 Production     : F12 → F13 → F14
 | 2026-10-01 | F0 | ADR-001/002/004–007 Accepted: TypeScript stack, EVM Sepolia, internal use, >3 operator |
 | 2026-10-01 | F1 | Monorepo + shared/backend/frontend, 49 test hijau. Pending: verifikasi Docker (Docker Desktop gagal start) |
 | 2026-10-02 | F1 | Docker Desktop (Hyper-V) hidup: `docker compose up -d` terverifikasi (port 5434), dev DB pindah ke Docker (ADR-013) |
+| 2026-10-03 | F7b | Import/reveal/UI vault, endpoint backend + client HMAC, lock saat logout; uji E2E sungguhan backend→signer (DB sekali pakai) lulus; 458 test hijau |
 | 2026-10-03 | F7a | Service signer: kriptografi vault (Argon2id + AES-256-GCM + AAD), unlock/lock/TTL, ganti passphrase & recovery, HMAC + anti-replay, loopback-only; 39 test signer, total 416 hijau |
 | 2026-10-03 | F6 | Kode selesai: valuasi CoinGecko (USD), simulasi testnet, scheduler harga + scan harian, dashboard, export CSV; 370 test hijau. M1 menunggu verifikasi live |
 | 2026-10-02 | F5 | Kode selesai: scanner RPC+Etherscan, analyzer basis transaksi keluar, BullMQ, UI scans; 305 test hijau. Tertunda: verifikasi live (key Sepolia) |

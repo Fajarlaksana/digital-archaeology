@@ -40,6 +40,11 @@ const envSchema = z.object({
     .default('0 2 * * *'),
   SCHEDULER_TIMEZONE: z.string().min(1).default('Asia/Jakarta'),
 
+  // --- Signer / key vault (Phase 7) ---
+  SIGNER_URL: z.url({ protocol: /^https?$/ }).default('http://127.0.0.1:4000'),
+  /** Shared with the signer. Without it, vault endpoints answer SIGNER_UNAVAILABLE. */
+  SIGNER_HMAC_SECRET: optional(z.string().min(32)),
+
   // --- Auth (Phase 3) ---
   /** Origin of the web UI. State-changing requests from any other Origin are rejected (CSRF). */
   APP_ORIGIN: z.url({ protocol: /^https?$/ }).default('http://127.0.0.1:5173'),

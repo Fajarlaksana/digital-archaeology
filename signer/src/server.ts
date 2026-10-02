@@ -2,6 +2,7 @@ import { createLogger } from '@da/shared'
 import { buildSignerApp } from './app'
 import { loadEnvFile, parseEnv, type SignerEnv } from './config/env'
 import { DEFAULT_KDF } from './crypto/kdf'
+import { createKeyService } from './keys/key.service'
 import { createVaultDatabase, createVaultRepository } from './vault/vault.repository'
 import { createVaultService } from './vault/vault.service'
 
@@ -17,13 +18,21 @@ try {
 
 const logger = createLogger({ name: 'signer', level: env.LOG_LEVEL })
 const db = createVaultDatabase(env.VAULT_DATABASE_URL)
+const repo = createVaultRepository(db)
 const vault = createVaultService({
-  repo: createVaultRepository(db),
+  repo,
   logger,
   unlockTtlMs: env.VAULT_UNLOCK_TTL_MINUTES * 60_000,
   kdf: DEFAULT_KDF,
 })
-const app = await buildSignerApp({ logger, hmacSecret: env.SIGNER_HMAC_SECRET, vault })
+const keys = createKeyService({
+  db,
+  repo,
+  vault,
+  logger,
+  revealEnabled: env.KEY_REVEAL_ENABLED === 'true',
+})
+const app = await buildSignerApp({ logger, hmacSecret: env.SIGNER_HMAC_SECRET, vault, keys })
 
 async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, 'SHUTDOWN')

@@ -7,7 +7,7 @@ import {
   type AuthPluginOptions,
   type Guards,
 } from '../auth/plugin'
-import type { AuthContext, AuthService } from '../services/auth.service'
+import type { AuthContext, AuthService, RequestMeta } from '../services/auth.service'
 import { toPublicUser } from '../services/user.service'
 
 const loginBody = z.object({
@@ -27,7 +27,12 @@ const ownAudit = { config: { skipGenericAudit: true } }
 
 export function registerAuthRoutes(
   app: FastifyInstance,
-  deps: { auth: AuthService; guards: Guards; cookie: AuthPluginOptions },
+  deps: {
+    auth: AuthService
+    guards: Guards
+    cookie: AuthPluginOptions
+    onLogout?: (ctx: AuthContext, meta: RequestMeta) => Promise<void>
+  },
 ): void {
   const { auth, guards } = deps
   const anyState = guards.session('ACTIVE', 'MFA_PENDING', 'MFA_SETUP_REQUIRED')
@@ -46,6 +51,7 @@ export function registerAuthRoutes(
 
   app.post('/api/auth/logout', { ...ownAudit, preHandler: anyState }, async (request, reply) => {
     await auth.logout(request.auth as AuthContext, requestMeta(request))
+    await deps.onLogout?.(request.auth as AuthContext, requestMeta(request))
     clearSessionCookie(reply, deps.cookie)
     return reply.status(204).send()
   })

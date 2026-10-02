@@ -165,37 +165,52 @@ Halaman awal setelah login menampilkan:
 - Isian yang diawali `=`, `+`, `-`, `@` diberi tanda kutip satu (`'`) agar tidak dijalankan sebagai rumus saat dibuka di Excel/Sheets.
 - Setiap export tercatat di audit log.
 
-## 8. Key Vault · *Fase 7* · SUPER_ADMIN
+## 8. Key Vault · *Fase 7* ✅ · SUPER_ADMIN
 
-Key Vault adalah tempat private key disimpan dalam keadaan terenkripsi. Hanya SUPER_ADMIN yang bisa membuka menu ini.
+Key Vault menyimpan private key dalam keadaan terenkripsi di **service signer terpisah**. Hanya SUPER_ADMIN yang melihat menu ini. Passphrase vault **tidak pernah disimpan** di mana pun.
+
+> **Konfirmasi ulang:** semua aksi vault kecuali **Kunci** meminta konfirmasi identitas (password akun + kode authenticator) jika konfirmasi terakhir lebih dari **5 menit** lalu. Form konfirmasi muncul otomatis, lalu aksi dilanjutkan.
 
 ### 8.1 Inisialisasi (sekali saja)
-1. Menu **Key Vault**, lalu **Inisialisasi Vault**.
-2. Buat **passphrase utama**: panjang (≥ 5 kata acak atau ≥ 20 karakter) dan **berbeda** dari password login.
-3. Buat **recovery passphrase**, tulis di kertas, lalu simpan di tempat fisik yang aman (brankas). Jangan simpan di HP, cloud, atau foto.
-4. ⚠ Jika **kedua** passphrase hilang, semua key di vault **tidak bisa dibuka selamanya**. Tidak ada "lupa password".
+1. Menu **Key Vault**, lalu form **Inisialisasi vault**.
+2. **Passphrase utama:** minimal 16 karakter. Disarankan 4–5 kata acak, dan **berbeda** dari password login.
+3. **Recovery passphrase:** harus berbeda dari passphrase utama. **Tulis di kertas** dan simpan di tempat fisik yang aman (brankas). Jangan simpan di HP, cloud, chat, atau foto.
+4. Centang pernyataan bahwa recovery passphrase sudah disimpan, lalu klik **Inisialisasi**.
+5. ⚠ Jika **kedua** passphrase hilang, semua key di vault **tidak bisa dibuka selamanya**. Tidak ada "lupa password".
+6. Setelah inisialisasi, vault dalam keadaan **terkunci**.
 
-### 8.2 Unlock & lock
-1. **Key Vault**, lalu **Unlock**, lalu masukkan passphrase dan kode MFA.
-2. Vault terbuka selama 10 menit (sesuai konfigurasi), lalu terkunci otomatis. Klik **Lock** jika sudah selesai.
-3. Vault juga terkunci saat Anda logout atau server di-restart.
+### 8.2 Buka & kunci
+1. Isi **Passphrase vault**, lalu klik **Buka**. Status berubah menjadi **TERBUKA** dengan hitung mundur.
+2. Vault terkunci otomatis setelah **10 menit**, saat Anda **logout**, atau saat service signer di-restart. Klik **Kunci vault sekarang** jika sudah selesai.
+3. Setelah 5 passphrase salah dalam 15 menit, vault menolak semua percobaan (termasuk yang benar) sampai jeda selesai.
 
 ### 8.3 Import key
-1. Pastikan address sudah terdaftar di **Addresses** dengan owner reference yang benar.
-2. **Key Vault** (unlocked), lalu **Import Key**, lalu pilih *Private key* atau *Seed phrase + derivation path*.
-3. Sistem mencocokkan key dengan address di inventory. Jika tidak cocok, import ditolak.
-4. Setelah tersimpan, daftar hanya menampilkan address dan tanggal import. Isi key tidak ditampilkan.
+1. Pastikan address sudah terdaftar di **Addresses** (dengan owner reference) dan **tidak diarsipkan**.
+2. Buka vault, lalu di bagian **Import key** pilih address dari inventaris, lalu pilih jenis input:
+   - **Private key**: 64 karakter hex (boleh diawali `0x`).
+   - **Seed phrase + derivation path**: 12/24 kata. Path default `m/44'/60'/0'/0/0` (akun pertama). Untuk akun ke-2 pakai `.../0/1`, dan seterusnya. **Hanya private key di path itu yang disimpan; seed phrase tidak disimpan.**
+3. Sistem menurunkan address dari key. Jika **tidak sama** dengan address yang dipilih, import ditolak dan tidak ada yang disimpan.
+4. Daftar **Key tersimpan** hanya menampilkan address, entri inventaris yang cocok (satu key EVM berlaku untuk address yang sama di semua network EVM), jenis, dan tanggal import. Isi key tidak pernah ditampilkan di daftar.
 
-### 8.4 Melihat key (break-glass)
-1. **Key Vault**, pilih address, lalu **Reveal**.
-2. Masukkan ulang password, kode MFA, dan passphrase vault.
-3. Key tampil tersamar. Klik untuk melihat, lalu modal tertutup otomatis setelah 60 detik.
-4. Setiap reveal tercatat di audit log dan dibatasi 3 kali per jam.
-5. Pastikan tidak ada orang lain atau software rekam layar saat melihat key.
+### 8.4 Menampilkan key (break-glass)
+1. Klik **Tampilkan key** pada baris key, lalu isi **passphrase vault** dan **kode authenticator yang baru** (satu kode hanya berlaku sekali).
+2. Key tampil **tersamar**. Klik **Lihat** untuk memperlihatkannya. Kotak tertutup **otomatis setelah 60 detik**, atau klik **Tutup**.
+3. Maksimal **3 kali per jam**. Setiap tampilan tercatat (`KEY_REVEALED`) tanpa isi key.
+4. Pastikan tidak ada orang lain atau software perekam layar. Fitur ini bisa dimatikan total di server dengan `KEY_REVEAL_ENABLED=false`.
 
 ### 8.5 Ganti passphrase / pemulihan
-- **Ganti passphrase:** Key Vault, lalu Settings, lalu Change Passphrase (butuh passphrase lama).
-- **Passphrase utama lupa:** Key Vault, lalu Recover, lalu masukkan recovery passphrase dan tetapkan passphrase utama baru.
+Bagian **Pengaturan passphrase**:
+- **Ganti passphrase utama:** isi passphrase saat ini dan yang baru. Key yang tersimpan tidak berubah.
+- **Lupa passphrase utama:** isi **recovery passphrase** dan passphrase utama baru. Vault terkunci setelahnya, dan semua key tetap bisa dibuka dengan passphrase baru.
+
+### 8.6 Jika muncul pesan error
+| Pesan | Arti / tindakan |
+|-------|-----------------|
+| Wrong passphrase | Passphrase vault salah (dicatat). Setelah 5 kali, tunggu 15 menit |
+| The vault is locked | Buka vault dulu |
+| …does not control the selected address | Key/seed/path tidak cocok dengan address yang dipilih. Periksa pilihan address atau derivation path |
+| The signer service is not reachable | Service signer mati atau tidak dikonfigurasi. Hubungi pengelola server |
+| Reveal limit reached | Sudah 3 kali dalam satu jam, tunggu |
 
 ## 9. Verifikasi kepemilikan · *Fase 7*
 
@@ -207,7 +222,7 @@ Key Vault adalah tempat private key disimpan dalam keadaan terenkripsi. Hanya SU
    - **Key tidak di vault:** **Connect Wallet**, lalu **Sign**, atau tanda tangani di perangkat offline lalu tempel signature-nya.
 5. Hasilnya **VERIFIED** (berhasil), **REJECTED** (signature tidak cocok), atau **EXPIRED** (buat challenge baru).
 
-> Private key/seed hanya boleh dimasukkan di menu **Key Vault → Import** oleh SUPER_ADMIN. Halaman lain atau orang lain yang meminta key **bukan** bagian dari prosedur sistem ini.
+> Private key/seed hanya boleh dimasukkan di menu **Key Vault → Import key** oleh SUPER_ADMIN. Halaman lain atau orang lain yang meminta key **bukan** bagian dari prosedur sistem ini.
 
 ## 10. Wallet tujuan & kelayakan · *Fase 8*
 

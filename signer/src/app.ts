@@ -3,6 +3,7 @@ import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify'
 import { z, ZodError } from 'zod'
 import { AppError, toErrorBody, type Logger } from '@da/shared'
 import { registerHmacGuard } from './auth/hmac-guard'
+import type { KeyService } from './keys/key.service'
 import type { VaultService } from './vault/vault.service'
 
 /** Opaque id of the backend user who triggered the action (logged in vault_events). */
@@ -14,11 +15,21 @@ const unlockBody = z.object({ actor, passphrase })
 const lockBody = z.object({ actor })
 const changeBody = z.object({ actor, currentPassphrase: passphrase, newPassphrase: passphrase })
 const recoverBody = z.object({ actor, recoveryPassphrase: passphrase, newPassphrase: passphrase })
+const evmAddress = z.string().regex(/^0x[0-9a-fA-F]{40}$/)
+const importBody = z.object({
+  actor,
+  expectedAddress: evmAddress,
+  secretType: z.enum(['PRIVATE_KEY', 'MNEMONIC']),
+  secret: z.string().min(1).max(1024),
+  derivationPath: z.string().max(100).nullable().optional(),
+})
+const revealBody = z.object({ actor, address: evmAddress, passphrase })
 
 export interface SignerAppDeps {
   logger: Logger
   hmacSecret: string
   vault: VaultService
+  keys: KeyService
   now?: () => number
 }
 
@@ -77,6 +88,15 @@ export async function buildSignerApp(deps: SignerAppDeps): Promise<FastifyInstan
   app.post('/vault/passphrase', async (request) =>
     deps.vault.changePassphrase(changeBody.parse(request.body)),
   )
+  app.get('/vault/keys', async () => ({ keys: await deps.keys.list() }))
+  app.post('/vault/keys/import', async (request) => ({
+    key: await deps.keys.import(importBody.parse(request.body)),
+  }))
+  // The only response that ever carries key material (ADR-009). no-store is set for all responses.
+  app.post('/vault/keys/reveal', async (request) =>
+    deps.keys.reveal(revealBody.parse(request.body)),
+  )
+
   app.post('/vault/recover', async (request) => deps.vault.recover(recoverBody.parse(request.body)))
 
   return app

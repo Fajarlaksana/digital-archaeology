@@ -182,6 +182,11 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-0
   5. **Signer hanya bind ke loopback** kecuali `SIGNER_ALLOW_NON_LOOPBACK=true` (untuk jaringan container privat di produksi).
   6. **Error tidak pernah memuat input:** validasi hanya menyebut nama field, dan passphrase salah dijawab "Wrong passphrase" dengan event `UNLOCK_FAILED`. Batas 5 kegagalan per 15 menit berlaku untuk unlock, ganti passphrase, dan recovery sekaligus.
   7. Vault tetap **terkunci** setelah init: unlock selalu merupakan aksi terpisah yang tercatat.
+  8. **(7b) Konfirmasi ulang 5 menit** (password + TOTP lewat `/api/auth/reauth`) untuk init, unlock, ganti passphrase, recovery, import, dan reveal. Lock tidak perlu konfirmasi karena selalu aman.
+  9. **(7b) Reveal** meminta tiga hal sekaligus: konfirmasi ulang ≤ 5 menit, **kode TOTP baru** di request itu (sekali pakai), dan passphrase vault. Master Key dibuka dari passphrase (`withPassphrase`), terlepas dari status unlock, dan kegagalannya dihitung bersama percobaan unlock.
+  10. **(7b) Satu key EVM = satu address di semua network EVM.** Vault menyimpan key per (chain, address). Daftar key menampilkan **semua** entri inventaris yang cocok di network mana pun.
+  11. **(7b) Logout SUPER_ADMIN mengunci vault** (best effort; logout tidak pernah gagal karena signer).
+  12. **(7b) Pesan error 4xx bersifat tetap:** error handler backend tidak lagi meneruskan pesan error client dari Fastify/library, karena pesan itu suatu saat bisa mengutip body request yang berisi passphrase/key.
 - **Batasan yang diketahui (dicatat dengan jujur):**
   - Passphrase datang sebagai string JavaScript dan tidak bisa ditimpa paksa sebelum garbage collection. Master Key, KEK, dan key yang didekripsi disimpan sebagai `Buffer` lalu ditimpa nol setelah dipakai, tetapi salinan sementara di internal V8/OpenSSL di luar kendali aplikasi.
   - Penghitung kegagalan unlock ada di memori proses signer, sehingga reset saat restart. Argon2id (64 MiB per percobaan) tetap membuat tebakan massal mahal.

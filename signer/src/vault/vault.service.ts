@@ -103,7 +103,7 @@ export function createVaultService(deps: VaultServiceDeps) {
   }
 
   async function failed(
-    type: 'UNLOCK_FAILED' | 'RECOVERY_FAILED',
+    type: 'UNLOCK_FAILED' | 'RECOVERY_FAILED' | 'REVEAL_FAILED',
     actor: string,
     message: string,
   ): Promise<never> {
@@ -235,6 +235,28 @@ export function createVaultService(deps: VaultServiceDeps) {
       state.clear()
       await repo.event('RECOVERED', { actor: input.actor })
       return service.status()
+    },
+
+    /**
+     * Opens the master key from the passphrase itself, independent of the unlock state —
+     * for break-glass actions that must re-prove knowledge of the passphrase (reveal, ADR-009).
+     * Wrong passphrases count towards the same throttle as unlock.
+     */
+    async withPassphrase<T>(
+      passphrase: string,
+      actor: string,
+      fn: (masterKey: Buffer) => Promise<T> | T,
+    ): Promise<T> {
+      const config = await requireConfig()
+      assertNotThrottled()
+      const masterKey = await unwrap(config, passphrase, 'main')
+      if (!masterKey) return failed('REVEAL_FAILED', actor, 'Wrong passphrase')
+      failures = []
+      try {
+        return await fn(masterKey)
+      } finally {
+        wipe(masterKey)
+      }
     },
 
     /** For key operations (Phase 7b+): runs `fn` with the in-memory master key. */

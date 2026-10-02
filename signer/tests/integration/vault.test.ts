@@ -5,6 +5,7 @@ import { createLogger, signRequest } from '@da/shared'
 import { buildSignerApp } from '../../src/app'
 import { open, unpack } from '../../src/crypto/aead'
 import { deriveKek } from '../../src/crypto/kdf'
+import { createKeyService } from '../../src/keys/key.service'
 import {
   createVaultDatabase,
   createVaultRepository,
@@ -40,6 +41,7 @@ describe.skipIf(!testDatabaseUrl)('key vault (signer)', () => {
   })
 
   async function freshVault(ttlMs = 10 * 60_000) {
+    await db.vaultKey.deleteMany({})
     await db.vaultConfig.deleteMany({})
     clock = Date.now()
     logLines = []
@@ -269,7 +271,19 @@ describe.skipIf(!testDatabaseUrl)('key vault (signer)', () => {
   describe('HTTP API with HMAC', () => {
     async function app() {
       const { logger } = await freshVault()
-      return buildSignerApp({ logger, hmacSecret: SECRET, vault, now: () => clock })
+      return buildSignerApp({
+        logger,
+        hmacSecret: SECRET,
+        vault,
+        keys: createKeyService({
+          db,
+          repo: createVaultRepository(db),
+          vault,
+          logger,
+          revealEnabled: true,
+        }),
+        now: () => clock,
+      })
     }
 
     function signed(

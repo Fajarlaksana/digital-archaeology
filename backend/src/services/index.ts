@@ -3,6 +3,7 @@ import { createSecretBox } from '../auth/secret-box'
 import type { ChainClientFactory } from '../chains/clients'
 import type { Database } from '../lib/prisma'
 import type { PriceProvider } from '../pricing/coingecko'
+import type { SignerClient } from '../signer/client'
 import { createAddressRepository } from '../repositories/address.repository'
 import { createAuditLogRepository } from '../repositories/audit-log.repository'
 import { createNetworkRepository } from '../repositories/network.repository'
@@ -19,6 +20,7 @@ import { createReportService } from './report.service'
 import { createScanService } from './scan.service'
 import { createUserService } from './user.service'
 import { createValuationService } from './valuation.service'
+import { createVaultService } from './vault.service'
 
 export interface ServiceConfig {
   mfaEncryptionKey: string
@@ -39,6 +41,8 @@ export interface ServiceConfig {
   fiatCurrency: string
   /** Scheduler state for the dashboard; null when no scheduler runs (tests). */
   scheduleInfo?: () => Promise<ScheduleInfo | null>
+  /** Phase 7: the internal signer (HTTP + HMAC in the server, in-memory fake in tests). */
+  signer: SignerClient
 }
 
 /** Wires repositories and services. The single place where the dependency graph is built. */
@@ -97,6 +101,7 @@ export function createServices(db: Database, config: ServiceConfig) {
       scheduleInfo: config.scheduleInfo ?? (async () => null),
     }),
     reports: createReportService({ db, audit, fiatCurrency }),
+    vault: createVaultService({ signer: config.signer, addresses, audit, logger: config.logger }),
     checkRpc: createChainHealth({ networks, clientsFor: config.clientsFor }),
   }
 }

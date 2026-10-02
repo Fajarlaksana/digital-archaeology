@@ -2,7 +2,7 @@
 
 Sistem inventarisasi, verifikasi kepemilikan, dan pemulihan aset kripto yang sudah lama tidak aktif. Sistem ini **hanya** untuk address milik sendiri atau address yang punya mandat/otorisasi sah.
 
-> **Status saat ini:** Fase 1–6 selesai secara kode (Milestone M1: inventaris watch-only). Penutupan M1 menunggu verifikasi live dengan wallet testnet (butuh `SEPOLIA_RPC_URL` dan `EXPLORER_API_KEY` di `.env`). Berikutnya: **Fase 7 — Key Vault & Ownership Verification** (Milestone M2).
+> **Status saat ini:** Fase 1–6 selesai secara kode; Fase 7a–7b (Key Vault: signer, import, reveal, UI) selesai. Penutupan M1 menunggu verifikasi live dengan wallet testnet. Berikutnya: **Fase 7c — Ownership Verification**.
 > Update baris ini setiap kali sebuah fase selesai (lihat [docs/03-roadmap.md](docs/03-roadmap.md)).
 
 ---

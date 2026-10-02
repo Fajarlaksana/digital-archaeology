@@ -257,6 +257,20 @@ export function createAuthService(deps: AuthServiceDeps) {
       await record(meta, 'REAUTH_SUCCESS', 'SUCCESS', { userId: ctx.user.id })
     },
 
+    /**
+     * Requires a FRESH authenticator code right now (break-glass actions, ADR-009).
+     * Single use (time step consumed); wrong codes count towards the session's MFA limit.
+     */
+    async confirmTotp(ctx: AuthContext, code: string, meta: RequestMeta): Promise<void> {
+      if (!ctx.user.mfaEnabled) {
+        throw new AppError('MFA_SETUP_REQUIRED', 'Two-factor authentication must be enabled')
+      }
+      if (!(await verifyAndConsumeTotp(ctx.user, code, false))) {
+        return failMfa(ctx, meta, 'MFA_CONFIRM_FAILED')
+      }
+      mfaLimiter.reset(ctx.session.id)
+    },
+
     async logout(ctx: AuthContext, meta: RequestMeta) {
       await sessions.revoke(ctx.session.id, now())
       await record(meta, 'LOGOUT', 'SUCCESS', { userId: ctx.user.id })

@@ -43,6 +43,7 @@ Kebutuhan lengkap: `system_analysis_digital_archaeology.md`. Revisi & keputusan:
 - Dev (backend :3000 + frontend :5173 + signer :4000 loopback): `pnpm dev`
 - Signer: migrasi vault `pnpm --filter signer db:deploy`; test `pnpm --filter signer test` (DB vault per-run `<db>_test_*`). Backend ↔ signer wajib HMAC (`signRequest` dari `@da/shared`)
 - Di kode signer: key material selalu `Buffer`, dihapus dengan `wipe()` setelah dipakai; jangan pernah log body request signer
+- Backend hanya menyentuh key lewat `SignerClient` (`backend/src/signer/client.ts`). Endpoint vault: `guards.permission('vault:manage')` + `guards.recentAuth(5 min)`; dalam test pakai `tests/integration/fake-signer.ts`. Gunakan hanya vektor uji publik Hardhat untuk key di test
 - Test semua: `pnpm test` · satu package: `pnpm --filter backend test`
 - Lint, typecheck, format: `pnpm lint`, `pnpm typecheck`, `pnpm format`
 - Buat user via CLI (satu-satunya cara untuk SUPER_ADMIN): `pnpm --filter backend user:create --email .. --name .. --role ..`

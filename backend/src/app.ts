@@ -11,7 +11,16 @@ import { registerNetworkRoutes } from './controllers/networks'
 import { registerOverviewRoutes } from './controllers/overview'
 import { registerScanRoutes } from './controllers/scans'
 import { registerUserRoutes } from './controllers/users'
+import { registerVaultRoutes } from './controllers/vault'
 import type { AppServices } from './services'
+
+const CLIENT_ERROR_MESSAGES: Record<string, string> = {
+  FST_ERR_CTP_INVALID_JSON_BODY: 'Body is not valid JSON',
+  FST_ERR_CTP_EMPTY_JSON_BODY: 'Body must not be empty',
+  FST_ERR_CTP_INVALID_MEDIA_TYPE: 'Unsupported content type (use application/json)',
+  FST_ERR_CTP_BODY_TOO_LARGE: 'Request body is too large',
+  FST_ERR_CTP_INVALID_CONTENT_LENGTH: 'Invalid content length',
+}
 
 export type AppEnv = Pick<
   Env,
@@ -62,8 +71,15 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
         ? Number(error.statusCode)
         : 500
     if (statusCode >= 400 && statusCode < 500) {
-      const message = error instanceof Error ? error.message : 'Bad request'
-      return reply.status(statusCode).send(toErrorBody('VALIDATION_ERROR', message, request.id))
+      // Fixed messages only: a library message could one day quote the request body,
+      // and bodies here can carry passphrases or keys.
+      const code =
+        typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : ''
+      return reply
+        .status(statusCode)
+        .send(
+          toErrorBody('VALIDATION_ERROR', CLIENT_ERROR_MESSAGES[code] ?? 'Bad request', request.id),
+        )
     }
 
     // Unknown failure: log the details, but never leak them to the client.
@@ -96,11 +112,18 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     }
     await registerAuth(app, authOptions)
     const guards = createGuards(authOptions)
-    registerAuthRoutes(app, { auth: services.auth, guards, cookie: authOptions })
+    registerAuthRoutes(app, {
+      auth: services.auth,
+      guards,
+      cookie: authOptions,
+      // Logging out a SUPER_ADMIN locks the vault (ADR-008).
+      onLogout: (ctx, meta) => services.vault.lockOnLogout(ctx, meta),
+    })
     registerUserRoutes(app, { users: services.users, guards })
     registerNetworkRoutes(app, { networks: services.networks, guards })
     registerAddressRoutes(app, { addresses: services.addresses, guards })
     registerScanRoutes(app, { scans: services.scans, guards })
+    registerVaultRoutes(app, { vault: services.vault, auth: services.auth, guards })
     registerOverviewRoutes(app, {
       dashboard: services.dashboard,
       reports: services.reports,

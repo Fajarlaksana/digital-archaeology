@@ -6,6 +6,7 @@ import { createChainClientFactory } from './chains/clients'
 import { createMaintenanceQueue } from './jobs/maintenance-queue'
 import { createScanQueue } from './jobs/scan-queue'
 import { createCoinGeckoProvider } from './pricing/coingecko'
+import { createHttpSignerClient } from './signer/client'
 import { createServices } from './services'
 
 loadEnvFile()
@@ -37,6 +38,7 @@ const services = createServices(db, {
   priceProvider: createCoinGeckoProvider({ baseUrl: env.PRICE_API_URL, apiKey: env.PRICE_API_KEY }),
   fiatCurrency: env.FIAT_CURRENCY,
   scheduleInfo: () => maintenance.info(),
+  signer: createHttpSignerClient({ baseUrl: env.SIGNER_URL, secret: env.SIGNER_HMAC_SECRET }),
 })
 const scanQueue = createScanQueue({
   redisUrl: env.REDIS_URL,

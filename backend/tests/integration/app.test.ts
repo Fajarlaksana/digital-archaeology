@@ -98,6 +98,23 @@ describe('error handling', () => {
     expect(res.json().error).toMatchObject({ code: 'INVALID_ADDRESS', resource_id: 'addr-9' })
   })
 
+  it('answers malformed JSON with a fixed message that never quotes the body', async () => {
+    const instance = await makeApp()
+    instance.post('/echo-probe', async () => ({ ok: true }))
+    const res = await instance.inject({
+      method: 'POST',
+      url: '/echo-probe',
+      headers: { 'content-type': 'application/json' },
+      payload: '{"privateKey": "0xSECRETSECRET" oops',
+    })
+    expect(res.statusCode).toBe(400)
+    expect(res.json().error).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'Body is not valid JSON',
+    })
+    expect(res.body).not.toContain('SECRETSECRET')
+  })
+
   it('hides internal error details from the client', async () => {
     const instance = await makeApp()
     instance.get('/boom', async () => {

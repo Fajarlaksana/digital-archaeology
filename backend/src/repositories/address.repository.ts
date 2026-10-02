@@ -96,6 +96,16 @@ export function createAddressRepository(db: Database) {
       return db.address.findUnique({ where: { id }, include: ADDRESS_INCLUDE })
     },
 
+    /** Every inventory entry (any network, archived included) for these canonical addresses. */
+    findByAddresses(addresses: string[]): Promise<AddressWithNetwork[]> {
+      if (addresses.length === 0) return Promise.resolve([])
+      return db.address.findMany({
+        where: { address: { in: addresses } },
+        include: ADDRESS_INCLUDE,
+        orderBy: { createdAt: 'asc' },
+      })
+    },
+
     findByNetworkAndAddress(networkId: string, address: string): Promise<Address | null> {
       return db.address.findUnique({ where: { networkId_address: { networkId, address } } })
     },

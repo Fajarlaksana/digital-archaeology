@@ -24,6 +24,8 @@ export const ERROR_HTTP_STATUS = {
   VAULT_LOCKED: 423,
   PASSPHRASE_INVALID: 401,
   SIGNER_UNAVAILABLE: 503,
+  /** The imported key does not control the registered address. */
+  KEY_ADDRESS_MISMATCH: 400,
   INTERNAL_ERROR: 500,
   DATABASE_UNAVAILABLE: 503,
 

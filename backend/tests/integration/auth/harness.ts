@@ -11,6 +11,7 @@ import type { Database } from '../../../src/lib/prisma'
 import { createServices } from '../../../src/services'
 import { createFakeChain, type FakeChain } from '../fake-chain'
 import { createFakePrices, type FakePrices } from '../fake-prices'
+import { createFakeSigner, type FakeSigner } from '../fake-signer'
 
 export const TEST_MFA_KEY = Buffer.alloc(32, 3).toString('base64')
 export const PASSWORD = 'correct horse battery staple'
@@ -19,7 +20,12 @@ export const APP_ORIGIN = 'http://127.0.0.1:5173'
 /** One app per test: own clock, own rate limiters, captured log output. */
 export async function createHarness(
   db: Database,
-  options: { networkMode?: 'testnet' | 'mainnet'; chain?: FakeChain; prices?: FakePrices } = {},
+  options: {
+    networkMode?: 'testnet' | 'mainnet'
+    chain?: FakeChain
+    prices?: FakePrices
+    signer?: FakeSigner
+  } = {},
 ) {
   let current = new Date('2026-10-02T08:00:00Z')
   const now = () => current
@@ -36,6 +42,7 @@ export async function createHarness(
   })
   const chain = options.chain ?? createFakeChain()
   const prices = options.prices ?? createFakePrices()
+  const signer = options.signer ?? createFakeSigner()
   const enqueued: string[] = []
   const services = createServices(db, {
     mfaEncryptionKey: TEST_MFA_KEY,
@@ -51,6 +58,7 @@ export async function createHarness(
     logger,
     priceProvider: prices.provider,
     fiatCurrency: 'USD',
+    signer: signer.client,
     now,
   })
   const app: FastifyInstance = await buildApp({
@@ -72,6 +80,7 @@ export async function createHarness(
     services,
     chain,
     prices,
+    signer,
     enqueued,
     /** Runs every queued scan to completion (stands in for the BullMQ worker). */
     async runQueuedScans() {
