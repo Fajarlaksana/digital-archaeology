@@ -1,3 +1,5 @@
+import type { Permission } from '@da/shared/rbac'
+
 /** Sidebar menu, from system_analysis section 14 plus the vault pages (ADR-003). */
 export interface NavItem {
   path: string
@@ -5,6 +7,8 @@ export interface NavItem {
   /** Roadmap phase that builds this page (docs/03-roadmap.md). */
   phase: number
   description: string
+  /** Hidden from users without it. The backend enforces the same permission on its endpoints. */
+  permission?: Permission
 }
 
 export interface NavGroup {
@@ -24,57 +28,73 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       {
         path: '/networks',
+        permission: 'networks:read',
         label: 'Networks',
         phase: 4,
         description: 'Daftar network blockchain yang didukung.',
       },
       {
         path: '/addresses',
+        permission: 'addresses:read',
         label: 'Addresses',
         phase: 4,
         description: 'Inventaris address milik sendiri / terotorisasi.',
       },
       {
         path: '/scans',
+        permission: 'scans:read',
         label: 'Scans',
         phase: 5,
         description: 'Pemindaian saldo dan aktivitas address.',
       },
       {
         path: '/authorizations',
+        permission: 'authorizations:read',
         label: 'Authorizations',
         phase: 7,
         description: 'Verifikasi kepemilikan & dokumen otorisasi.',
       },
       {
         path: '/recovery',
+        permission: 'transactions:read',
         label: 'Recovery',
         phase: 9,
         description: 'Kelayakan, preview, dan approval transaksi.',
       },
       {
         path: '/transactions',
+        permission: 'transactions:read',
         label: 'Transactions',
         phase: 11,
         description: 'Status broadcast dan konfirmasi transaksi.',
       },
       {
         path: '/reports',
+        permission: 'reports:read',
         label: 'Reports',
         phase: 12,
         description: 'Laporan inventaris, aktivitas, dan transaksi.',
       },
       {
         path: '/audit-logs',
+        permission: 'audit:read',
         label: 'Audit Logs',
         phase: 12,
         description: 'Jejak seluruh aktivitas (read-only).',
       },
       {
         path: '/settings',
+        permission: 'networks:manage',
         label: 'Settings',
         phase: 8,
         description: 'Aset, destination whitelist, dan scheduler.',
+      },
+      {
+        path: '/users',
+        label: 'Users',
+        phase: 3,
+        permission: 'users:read',
+        description: 'Akun pengguna, role, dan status.',
       },
     ],
   },
@@ -83,12 +103,14 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         path: '/key-vault',
+        permission: 'vault:manage',
         label: 'Key Vault',
         phase: 7,
         description: 'Penyimpanan private key terenkripsi.',
       },
       {
         path: '/signing',
+        permission: 'transactions:sign',
         label: 'Signing',
         phase: 10,
         description: 'Menandatangani transaksi yang sudah di-approve.',

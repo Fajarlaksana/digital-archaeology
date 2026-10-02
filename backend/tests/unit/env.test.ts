@@ -4,6 +4,7 @@ import { parseEnv } from '../../src/config/env'
 const VALID = {
   DATABASE_URL: 'postgresql://da:pw@127.0.0.1:5432/digital_archaeology',
   REDIS_URL: 'redis://127.0.0.1:6379',
+  MFA_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
 }
 
 describe('parseEnv', () => {
@@ -19,7 +20,7 @@ describe('parseEnv', () => {
   })
 
   it('fails when required variables are missing and names them', () => {
-    expect(() => parseEnv({})).toThrow(/DATABASE_URL.*REDIS_URL/)
+    expect(() => parseEnv({})).toThrow(/DATABASE_URL.*REDIS_URL.*MFA_ENCRYPTION_KEY/)
   })
 
   it('never includes variable values in the error message', () => {
@@ -42,6 +43,18 @@ describe('parseEnv', () => {
 
   it('accepts mainnet only when set explicitly', () => {
     expect(parseEnv({ ...VALID, NETWORK_MODE: 'mainnet' }).NETWORK_MODE).toBe('mainnet')
+  })
+
+  it('requires a 32-byte base64 MFA_ENCRYPTION_KEY', () => {
+    expect(() => parseEnv({ ...VALID, MFA_ENCRYPTION_KEY: undefined })).toThrow(
+      /MFA_ENCRYPTION_KEY/,
+    )
+    const short = Buffer.alloc(16, 1).toString('base64')
+    expect(() => parseEnv({ ...VALID, MFA_ENCRYPTION_KEY: short })).toThrow(/MFA_ENCRYPTION_KEY/)
+  })
+
+  it('applies session defaults', () => {
+    expect(parseEnv(VALID)).toMatchObject({ SESSION_TTL_HOURS: 12, SESSION_IDLE_MINUTES: 30 })
   })
 
   it('coerces and validates the port', () => {

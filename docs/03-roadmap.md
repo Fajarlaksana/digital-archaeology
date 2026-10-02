@@ -48,7 +48,9 @@ M4 Production     : F12 → F13 → F14
 
 **DoD:** `docker compose up -d && pnpm dev` jalan, `/health` mengembalikan 200, `pnpm test`, `pnpm lint`, dan `pnpm typecheck` hijau, dan test redaction logger lulus.
 
-> **Update 2026-10-02:** `/health/database` = 200 terhadap PostgreSQL 16 native (ADR-011). Hanya `docker compose up -d` yang belum diverifikasi.
+> **Update 2026-10-02 (2):** Docker Desktop berjalan dengan backend Hyper-V. `docker compose up -d` terverifikasi: kedua container sehat, script init membuat 2 DB + 2 user, isolasi vault berlaku, migrasi + 80 test lulus. **DoD Fase 1 terpenuhi penuh.**
+>
+> **Update 2026-10-02:** `/health/database` = 200 terhadap PostgreSQL 16 native (ADR-011).
 >
 > **Status 2026-10-01:** semua terpenuhi **kecuali** verifikasi `docker compose up -d`, karena Docker Desktop di mesin dev gagal start ("Docker Desktop is unable to start"). Tanpa DB, `/health/database` sudah terbukti mengembalikan 503 `DATABASE_UNAVAILABLE`. Setelah Docker hidup: jalankan `docker compose up -d`, lalu pastikan `/health/database` = 200.
 
@@ -77,18 +79,22 @@ M4 Production     : F12 → F13 → F14
 
 ## Fase 3 — Autentikasi & RBAC · M
 
-- [ ] Register user oleh ADMIN (tidak ada self-register), login, logout
-- [ ] Password hashing (argon2), session/JWT di httpOnly cookie, session timeout
-- [ ] Rate limit pada endpoint login
-- [ ] Role: `SUPER_ADMIN, ADMIN, ANALYST, REVIEWER, AUDITOR` dengan permission sesuai SA 8.2 + ADR-003
-- [ ] Seed user dev (ADMIN/ANALYST/REVIEWER/AUDITOR, password dari env), dipindahkan dari Fase 2
-- [ ] SUPER_ADMIN hanya bisa dibuat lewat CLI/seed di server (`pnpm --filter backend create-super-admin`), tidak bisa lewat UI
-- [ ] Middleware `requirePermission()` + `requireRecentAuth()` (re-auth untuk aksi sensitif)
-- [ ] **MFA TOTP wajib** untuk SUPER_ADMIN & REVIEWER (login ditolak jika MFA belum disetel)
-- [ ] Audit log otomatis untuk login sukses/gagal dan setiap request yang mengubah data
-- [ ] Halaman login, setup MFA, dan manajemen user di frontend
+- [x] User dibuat oleh ADMIN (tidak ada self-register), login, logout
+- [x] Password argon2id; **session di database** (cookie `httpOnly`, `SameSite=Strict`, hanya hash token yang disimpan), idle timeout 30 menit + maksimum 12 jam
+- [x] Rate limit login (5 per 15 menit per IP+email, 50 per IP) + akun terkunci setelah 10 kegagalan; pesan error selalu generik
+- [x] Role `SUPER_ADMIN, ADMIN, ANALYST, REVIEWER, AUDITOR`; peta permission terpusat (`backend/src/auth/permissions.ts`, kosakata di `@da/shared/rbac`)
+- [x] Seed user dev (ADMIN/ANALYST/REVIEWER/AUDITOR, password dari `SEED_DEV_PASSWORD`)
+- [x] SUPER_ADMIN hanya lewat CLI server: `pnpm --filter backend user:create --role SUPER_ADMIN ...` (API menolak memberi, mencabut, maupun mengubah SUPER_ADMIN)
+- [x] Guard `permission()`, `session()`, `recentAuth()` + endpoint `/api/auth/reauth`
+- [x] **MFA TOTP wajib** untuk SUPER_ADMIN, ADMIN, REVIEWER (ADR-012); secret terenkripsi AES-256-GCM; anti-replay; session dicabut setelah 5 kode salah
+- [x] Audit otomatis: login sukses/gagal, akun terkunci, MFA, akses ditolak, perubahan user (before/after), dan setiap request POST/PATCH/DELETE (tanpa body)
+- [x] CSRF: tolak `Origin` asing untuk request yang mengubah data, parser `text/plain` dihapus
+- [x] Frontend: login, verifikasi & setup MFA (QR), menu sesuai permission, halaman Users
+- [ ] Reset MFA untuk user yang kehilangan perangkat → dipindah ke Fase 13 (butuh prosedur verifikasi identitas)
 
 **DoD:** test integrasi membuktikan setiap role hanya bisa mengakses endpoint yang diizinkan, ADMIN biasa tidak bisa mengakses endpoint vault, dan password tidak pernah muncul di log.
+
+> **Status 2026-10-02:** terpenuhi. 187 test hijau, termasuk matriks role × endpoint, MFA, replay TOTP, rate limit, penguncian akun, kedaluwarsa session, dan CSRF. Uji langsung lewat proxy Vite juga lulus. (Endpoint vault belum ada; permission `vault:manage` hanya dimiliki SUPER_ADMIN dan dikunci oleh unit test.)
 
 ---
 
@@ -235,6 +241,8 @@ M4 Production     : F12 → F13 → F14
 - [ ] Metrics (SA bagian 10) + health check lengkap
 - [ ] Dependency audit (`pnpm audit`), header keamanan (helmet), CORS ketat
 - [ ] Jalankan `/security-review` di Claude Code dan tindaklanjuti temuannya
+- [ ] Reset MFA oleh ADMIN untuk user yang kehilangan perangkat (dengan verifikasi identitas + audit)
+- [ ] Pindahkan rate limiter login ke Redis jika API dijalankan lebih dari satu instance
 
 ---
 
@@ -260,4 +268,6 @@ M4 Production     : F12 → F13 → F14
 | 2026-10-01 | F0 | ADR-003/008/009: key dipegang SUPER_ADMIN di Key Vault terenkripsi |
 | 2026-10-01 | F0 | ADR-001/002/004–007 Accepted: TypeScript stack, EVM Sepolia, internal use, >3 operator |
 | 2026-10-01 | F1 | Monorepo + shared/backend/frontend, 49 test hijau. Pending: verifikasi Docker (Docker Desktop gagal start) |
+| 2026-10-02 | F1 | Docker Desktop (Hyper-V) hidup: `docker compose up -d` terverifikasi (port 5434), dev DB pindah ke Docker (ADR-013) |
+| 2026-10-02 | F3 | Selesai. Auth + RBAC + MFA + Users UI, 187 test hijau |
 | 2026-10-02 | F2 | Selesai. Schema + migrasi + seed + repository; 119 test hijau termasuk 12 test DB (audit log append-only, constraint, uint256). Dev DB: PostgreSQL 16 native port 5433 |

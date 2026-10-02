@@ -77,6 +77,13 @@ enum UserStatus {
   LOCKED
 }
 
+/// What a session may do. Only ACTIVE sessions pass permission checks.
+enum SessionState {
+  MFA_SETUP_REQUIRED
+  MFA_PENDING
+  ACTIVE
+}
+
 enum AuthorizationType {
   SELF
   MANDATE
@@ -319,6 +326,8 @@ model User {
   /// TOTP secret, encrypted at the application layer (Phase 3).
   mfaSecretEncrypted String?    @map("mfa_secret_encrypted")
   mfaEnabled         Boolean    @default(false) @map("mfa_enabled")
+  /// Last accepted TOTP time step; a code from this step or earlier is rejected (replay).
+  mfaLastUsedStep    Int?       @map("mfa_last_used_step")
   status             UserStatus @default(ACTIVE)
   failedLoginCount   Int        @default(0) @map("failed_login_count")
   lastLoginAt        DateTime?  @map("last_login_at")
@@ -326,6 +335,7 @@ model User {
   updatedAt          DateTime   @updatedAt @map("updated_at")
 
   roles                 UserRole[]           @relation("UserRoles")
+  sessions              Session[]
   grantedRoles          UserRole[]           @relation("RoleGrantedBy")
   createdAddresses      Address[]            @relation("AddressCreatedBy")
   createdScans          Scan[]               @relation("ScanCreatedBy")
@@ -351,6 +361,27 @@ model UserRole {
 
   @@id([userId, role])
   @@map("user_roles")
+}
+
+/// Server-side session (Phase 3). The cookie carries a random token; only its SHA-256 is stored.
+model Session {
+  id         String       @id @default(uuid()) @db.Uuid
+  tokenHash  String       @unique @map("token_hash")
+  userId     String       @map("user_id") @db.Uuid
+  state      SessionState
+  ipAddress  String?      @map("ip_address")
+  userAgent  String?      @map("user_agent")
+  createdAt  DateTime     @default(now()) @map("created_at")
+  lastSeenAt DateTime     @map("last_seen_at")
+  expiresAt  DateTime     @map("expires_at")
+  /// Last time the user re-confirmed password (+ MFA). Sensitive actions require a recent value.
+  reauthAt   DateTime?    @map("reauth_at")
+  revokedAt  DateTime?    @map("revoked_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
 }
 
 // ─────────────────── Authorization & ownership ───────────────────

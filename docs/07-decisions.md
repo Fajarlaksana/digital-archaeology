@@ -2,7 +2,7 @@
 
 Setiap keputusan penting dicatat di sini agar alasannya tidak hilang. Status yang dipakai: **Proposed** (usulan), **Accepted** (diterima), **Superseded** (diganti oleh ADR lain).
 
-Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. Semua ADR-001 s/d ADR-011 sudah Accepted.
+Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-013 sudah diputuskan (ADR-011 digantikan ADR-013).
 
 ---
 
@@ -107,13 +107,34 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. Semua ADR-001 s/d
 - **Alasan:** pertahanan berlapis. Bug di aplikasi atau akun DB yang bocor tetap tidak bisa melanggar aturan inti.
 
 ## ADR-011 — Database dev: PostgreSQL native (sementara)
-- **Status:** Accepted
+- **Status:** Superseded oleh ADR-013
 - **Tanggal:** 2026-10-02
 - **Konteks:** Docker Desktop di mesin dev gagal start. PostgreSQL 16 (port 5433) dan 18 (port 5432) sudah terpasang native.
 - **Keputusan:** dev memakai PostgreSQL **16 native di port 5433**. Setup DB dilakukan dengan `scripts/db/native-setup.sql`. Docker tetap didukung, dan port host-nya bisa diatur lewat `POSTGRES_HOST_PORT` karena 5432 sudah terpakai.
 - **Catatan keamanan:** instance native mendengarkan di `0.0.0.0`, tetapi `pg_hba.conf` sudah diperiksa (2026-10-02) dan hanya mengizinkan `127.0.0.1/32` dan `::1/128` dengan `scram-sha-256`, jadi koneksi dari luar ditolak. Jangan menambah aturan `host` untuk jaringan lain, karena DB vault (`da_vault`) juga ada di sini.
 - **Isolasi terverifikasi:** user `da` ditolak saat connect ke `da_vault` (`permission denied ... CONNECT privilege`).
 - **Akses superuser:** password `postgres` PG 16 di-reset pada 2026-10-02 dan disimpan di `%APPDATA%\postgresql\pgpass.conf` (profil Windows user, dibaca otomatis oleh `psql`). Password itu tidak ada di repo. Server PG 16 ini juga dipakai proyek lain (`whale_tracker`).
+
+## ADR-012 — Autentikasi, session, dan MFA (Fase 3)
+- **Status:** Accepted
+- **Tanggal:** 2026-10-02
+- **Keputusan:**
+  1. **Session di database** (tabel `sessions`), bukan JWT. Cookie hanya berisi token acak 256-bit, sedangkan DB menyimpan SHA-256-nya. Dengan begitu session bisa dicabut seketika (logout, user dinonaktifkan, role diubah, terlalu banyak kode MFA salah). Idle timeout 30 menit, maksimum 12 jam.
+  2. **MFA TOTP wajib untuk SUPER_ADMIN, ADMIN, dan REVIEWER.** ADMIN ditambahkan karena ADMIN bisa membuat akun REVIEWER. Tanpa MFA, akun ADMIN yang dibobol bisa membuat reviewer palsu dan mengakali maker-checker.
+  3. Status session: `MFA_SETUP_REQUIRED`, `MFA_PENDING`, `ACTIVE`. Hanya session `ACTIVE` yang lolos pemeriksaan permission. Session `MFA_PENDING` tidak bisa mendaftarkan authenticator baru.
+  4. **Anti-enumerasi:** semua kegagalan login dijawab `INVALID_CREDENTIALS` dengan pesan yang sama, termasuk akun terkunci atau nonaktif. Untuk email yang tidak terdaftar, waktu respons disamakan dengan verifikasi hash dummy. Alasan sebenarnya hanya dicatat di audit log.
+  5. **CSRF:** cookie `SameSite=Strict`, request yang mengubah data dengan `Origin` selain `APP_ORIGIN` ditolak, dan hanya body JSON yang diterima.
+  6. **SUPER_ADMIN hanya lewat CLI** (`user:create`). API menolak memberi, mencabut, maupun mengubah akun SUPER_ADMIN. ADMIN tidak bisa mengubah role atau status dirinya sendiri. SUPER_ADMIN tidak punya permission manajemen user (pemisahan tugas).
+  7. Kosakata RBAC (`ROLES`, `PERMISSIONS`) berada di `@da/shared/rbac` agar backend dan frontend memakai sumber yang sama. Unit test memastikan daftar itu sama dengan enum `Role` di DB.
+- **Risiko yang diterima:** pada login pertama, akun yang wajib MFA mendaftarkan authenticator setelah login dengan password saja. Siapa pun yang mengetahui password awal bisa mendaftarkan perangkatnya lebih dulu. Mitigasinya: password awal disampaikan lewat jalur aman dan setup MFA dilakukan segera. Reset MFA (perangkat hilang) dikerjakan di Fase 13.
+- **Batasan:** rate limiter login ada di memori satu proses. Jika API dijalankan lebih dari satu instance, rate limiter harus dipindah ke Redis (Fase 13).
+
+## ADR-013 — Database dev: Docker
+- **Status:** Accepted (menggantikan ADR-011)
+- **Tanggal:** 2026-10-02
+- **Konteks:** Docker Desktop kini berjalan dengan backend Hyper-V.
+- **Keputusan:** dev memakai `docker compose`: Postgres di **port host 5434** (`POSTGRES_HOST_PORT`, karena 5432/5433 dipakai PostgreSQL native) dan Redis di 6379. Database terisolasi dari proyek lain di PostgreSQL native.
+- **Catatan:** PostgreSQL 16 native (port 5433) masih berisi database proyek ini dari Fase 2 dan tidak dipakai lagi. Hapus dengan `DROP DATABASE digital_archaeology; DROP DATABASE da_vault; DROP USER da; DROP USER da_vault;` jika sudah tidak dibutuhkan.
 
 ---
 

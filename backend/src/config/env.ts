@@ -17,6 +17,19 @@ const envSchema = z.object({
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
   REDIS_URL: z.url({ protocol: /^rediss?$/ }),
   SEPOLIA_RPC_URL: optional(z.url({ protocol: /^https?$/ })),
+
+  // --- Auth (Phase 3) ---
+  /** Origin of the web UI. State-changing requests from any other Origin are rejected (CSRF). */
+  APP_ORIGIN: z.url({ protocol: /^https?$/ }).default('http://127.0.0.1:5173'),
+  SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(72).default(12),
+  SESSION_IDLE_MINUTES: z.coerce.number().int().min(5).max(480).default(30),
+  /** Defaults to true in production. Must be true whenever the app is served over HTTPS. */
+  COOKIE_SECURE: optional(z.enum(['true', 'false'])),
+  /** 32 random bytes, base64. Encrypts TOTP secrets at rest (AES-256-GCM). */
+  MFA_ENCRYPTION_KEY: z
+    .string()
+    .regex(/^[A-Za-z0-9+/]+={0,2}$/)
+    .refine((value) => Buffer.from(value, 'base64').length === 32, 'must decode to 32 bytes'),
 })
 
 export type Env = z.infer<typeof envSchema>

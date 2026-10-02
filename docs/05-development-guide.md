@@ -27,16 +27,14 @@ Akun eksternal (gratis untuk testnet):
 git clone <repo> && cd digital-archaeology
 corepack enable
 pnpm install
-cp .env.example .env            # sesuaikan port DATABASE_URL dengan Postgres yang dipakai
-
-# Pilih SATU:
-docker compose up -d            # (a) Docker: PostgreSQL (2 DB) + Redis, port hanya di 127.0.0.1
-psql -U postgres -h 127.0.0.1 -p 5433 -f scripts/db/native-setup.sql   # (b) PostgreSQL native
-
+cp .env.example .env            # lalu isi MFA_ENCRYPTION_KEY dan SEED_DEV_PASSWORD (lihat komentar di file)
+docker compose up -d            # PostgreSQL (2 DB) di 127.0.0.1:5434 + Redis di 127.0.0.1:6379
 pnpm --filter backend db:deploy # terapkan migrasi
-pnpm --filter backend db:seed   # data awal (Sepolia, ETH, USDC, LINK)
+pnpm --filter backend db:seed   # Sepolia + aset + user dev (admin/analyst/reviewer/auditor@dev.local)
 pnpm dev                        # backend + frontend
 ```
+
+Alternatif tanpa Docker (ADR-011): PostgreSQL native, setup dengan `psql -U postgres -h 127.0.0.1 -p <port> -f scripts/db/native-setup.sql`, lalu sesuaikan port di `DATABASE_URL`.
 
 - Backend: `http://127.0.0.1:3000` (cek `GET /health`, `/health/database`, `/health/rpc`)
 - Frontend: `http://127.0.0.1:5173` (Vite mem-proxy `/api` dan `/health` ke backend)
@@ -190,14 +188,23 @@ Test keamanan yang wajib ada sejak awal:
 
 ## 6. Environment variables
 
-Lihat SA bagian 15. Tambahan dari revisi:
+Daftar lengkap dan nilai default dev ada di [`.env.example`](../.env.example), yang menjadi sumber kebenarannya. Ringkasan:
 
 ```env
 APP_ENV=development
 NETWORK_MODE=testnet                 # testnet | mainnet — mainnet harus eksplisit
-DATABASE_URL=postgresql://da:da@localhost:5432/digital_archaeology
-REDIS_URL=redis://localhost:6379
-SESSION_SECRET=
+POSTGRES_HOST_PORT=5434              # port host Postgres Docker (5432/5433 dipakai PG native)
+DATABASE_URL=postgresql://da:da_dev_only@127.0.0.1:5434/digital_archaeology
+REDIS_URL=redis://127.0.0.1:6379
+
+# Auth (Fase 3)
+APP_ORIGIN=http://127.0.0.1:5173     # request yang mengubah data dari origin lain ditolak
+SESSION_TTL_HOURS=12
+SESSION_IDLE_MINUTES=30
+COOKIE_SECURE=                       # kosong = true hanya di production
+MFA_ENCRYPTION_KEY=                  # wajib: 32 byte acak, base64
+SEED_DEV_PASSWORD=                   # password user dev dari seed (≥ 12 karakter)
+
 SEPOLIA_RPC_URL=
 EXPLORER_API_KEY=
 PRICE_PROVIDER=coingecko

@@ -22,13 +22,39 @@ Address yang lama tidak aktif **bukan** berarti tidak ada pemiliknya. Semua akti
 | **REVIEWER** | Review otorisasi, approve destination & transaksi | Approve sesuatu yang ia buat sendiri |
 | **AUDITOR** | Membaca audit log & laporan | Mengubah data apa pun |
 
-Satu orang boleh punya beberapa role, tetapi **pembuat transaksi tidak bisa menjadi approver-nya**. Akun SUPER_ADMIN hanya bisa dibuat lewat server (CLI), tidak lewat menu aplikasi. MFA wajib untuk SUPER_ADMIN dan REVIEWER.
+Satu orang boleh punya beberapa role, tetapi **pembuat transaksi tidak bisa menjadi approver-nya**. Akun SUPER_ADMIN hanya bisa dibuat lewat server (CLI), tidak lewat menu aplikasi. **MFA wajib untuk SUPER_ADMIN, ADMIN, dan REVIEWER.** Menu yang tampil di sidebar mengikuti role Anda.
 
-## 3. Login · *Fase 3*
+## 3. Login & MFA · *Fase 3* ✅
 
-1. Buka aplikasi, lalu masukkan email dan password yang diberikan ADMIN.
-2. Untuk SUPER_ADMIN/REVIEWER: masukkan kode MFA dari aplikasi authenticator (wajib, disetel saat login pertama).
-3. Sesi berakhir otomatis setelah tidak ada aktivitas selama waktu tertentu.
+### 3.1 Login biasa
+1. Buka aplikasi (dev: `http://127.0.0.1:5173`), lalu masukkan email dan password dari ADMIN.
+2. Jika salah, pesan yang muncul selalu sama ("Invalid email or password"), termasuk untuk akun yang terkunci. Ini disengaja agar penyerang tidak bisa menebak akun.
+3. Setelah 5 kali salah dalam 15 menit, login ditahan sementara. Setelah 10 kali salah berturut-turut, **akun terkunci** dan hanya ADMIN yang bisa membukanya.
+4. Sesi berakhir setelah **30 menit tanpa aktivitas**, atau paling lama **12 jam**. Klik **Keluar** di pojok kiri bawah untuk mengakhiri sesi.
+
+### 3.2 Login pertama untuk SUPER_ADMIN / ADMIN / REVIEWER (setup MFA)
+1. Setelah password diterima, muncul halaman **Aktifkan verifikasi dua langkah**. Klik **Mulai setup**.
+2. Pindai QR dengan aplikasi authenticator (Google Authenticator, Aegis, 1Password, dll.). Jika tidak bisa dipindai, ketik kunci yang ditampilkan.
+3. Masukkan kode 6 digit dari aplikasi, lalu klik **Aktifkan MFA**.
+4. Lakukan langkah ini **segera** setelah menerima password awal.
+
+### 3.3 Login berikutnya (dengan MFA)
+1. Masukkan email dan password, lalu kode 6 digit dari aplikasi authenticator.
+2. Satu kode hanya bisa dipakai sekali. Setelah 5 kode salah, sesi dibatalkan dan Anda harus login ulang.
+
+### 3.4 Membuat akun SUPER_ADMIN (di server, oleh pengelola sistem)
+```bash
+pnpm --filter backend user:create --email nama@domain --name "Nama" --role SUPER_ADMIN
+```
+Password diketik tanpa ditampilkan dan diminta dua kali. Pembuatan akun ini tercatat di audit log (`USER_CREATED_CLI`). Setup MFA dilakukan saat login pertama.
+
+## 3A. Manajemen user · *Fase 3* ✅ · ADMIN (lihat: AUDITOR)
+
+1. Menu **Users** menampilkan semua akun beserta role, status, status MFA, dan login terakhir.
+2. **Tambah user**: isi email, nama, password awal (minimal 12 karakter), lalu pilih role. Role SUPER_ADMIN tidak tersedia di sini.
+3. **Ubah role / Nonaktifkan / Buka kunci**: tersedia per baris. Setiap perubahan role atau status langsung **mengeluarkan user tersebut dari semua sesinya**.
+4. Anda tidak bisa mengubah role atau status akun Anda sendiri, dan tidak bisa mengubah akun SUPER_ADMIN.
+5. Semua perubahan tercatat di audit log beserta data sebelum dan sesudahnya.
 
 ## 4. Menyiapkan network · *Fase 4* · ADMIN
 

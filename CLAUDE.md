@@ -26,16 +26,18 @@ Kebutuhan lengkap: `system_analysis_digital_archaeology.md`. Revisi & keputusan:
 - Monorepo pnpm: `backend/` (Node.js + TypeScript + Fastify + Prisma + PostgreSQL + Redis/BullMQ + Pino + Zod + Vitest), `frontend/` (React + Vite + TypeScript + React Router + TanStack Query + Tailwind), `shared/` (`@da/shared`: logger dengan redaction + `AppError`/format error, dipakai backend & signer), `signer/` (service internal Key Vault + signing, DB `da_vault` sendiri, tidak terekspos ke internet).
 - TypeScript dikunci `~6.0` (typescript-eslint belum mendukung TS 7). Paket workspace di-import sebagai source TS (`exports` → `src/index.ts`), tanpa build step.
 - Selalu pakai `createLogger` dari `@da/shared` dan lempar `AppError(code, ...)`. Jangan pakai `console.*` (lint error).
-- Role: `SUPER_ADMIN, ADMIN, ANALYST, REVIEWER, AUDITOR`.
+- Role: `SUPER_ADMIN, ADMIN, ANALYST, REVIEWER, AUDITOR`. Endpoint memeriksa **permission** (bukan role) lewat `guards.permission('x:y')`. Peta role ke permission ada di `backend/src/auth/permissions.ts`. MFA wajib untuk SUPER_ADMIN/ADMIN/REVIEWER (ADR-012).
+- Endpoint baru wajib: guard permission, validasi body dengan Zod, dan masuk ke matriks test role × endpoint.
 - Integrasi chain melalui interface `ChainAdapter`. Implementasi pertama: EVM (viem) di testnet Sepolia.
 
 ## Perintah
 
 - Install: `pnpm install` (build script dependency harus diizinkan di `allowBuilds` pada `pnpm-workspace.yaml`)
-- Infra lokal: PostgreSQL 16 native di port **5433** (setup sekali: `psql -U postgres -h 127.0.0.1 -p 5433 -f scripts/db/native-setup.sql`), atau `docker compose up -d`. DB `digital_archaeology` (user `da`), `da_vault` (user `da_vault`)
+- Infra lokal: `docker compose up -d`. Postgres di port host **5434** (`POSTGRES_HOST_PORT`) dan Redis 6379. DB `digital_archaeology` (user `da`), `da_vault` (user `da_vault`). Lihat ADR-013
 - Dev (backend :3000 + frontend :5173): `pnpm dev`
 - Test semua: `pnpm test` · satu package: `pnpm --filter backend test`
 - Lint, typecheck, format: `pnpm lint`, `pnpm typecheck`, `pnpm format`
+- Buat user via CLI (satu-satunya cara untuk SUPER_ADMIN): `pnpm --filter backend user:create --email .. --name .. --role ..`
 - DB: `pnpm --filter backend db:migrate` (buat/terapkan migrasi), `db:deploy`, `db:seed`, `db:status`, `db:generate`
 - Test DB: setiap run membuat DB baru `<db>_test_<waktu>_<acak>`, menerapkan `migrate deploy`, lalu menghapusnya. Test di-skip jika DB tidak terjangkau. Jangan pernah memakai `prisma migrate reset` pada database yang sudah ada
 - Constraint/trigger yang tidak bisa diekspresikan Prisma ditulis manual di `migration.sql` (lihat ADR-010). Jangan dihapus saat membuat migrasi baru

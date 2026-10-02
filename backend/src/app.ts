@@ -2,16 +2,27 @@ import { randomUUID } from 'node:crypto'
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify'
 import { ZodError } from 'zod'
 import { AppError, toErrorBody, type Logger } from '@da/shared'
+import { createGuards, registerAuth, type AuthPluginOptions } from './auth/plugin'
 import type { Env } from './config/env'
+import { registerAuthRoutes } from './controllers/auth'
 import { registerHealthRoutes } from './controllers/health'
+import { registerUserRoutes } from './controllers/users'
+import type { AppServices } from './services'
+
+export type AppEnv = Pick<
+  Env,
+  'NETWORK_MODE' | 'APP_ENV' | 'APP_ORIGIN' | 'SESSION_TTL_HOURS' | 'COOKIE_SECURE'
+>
 
 export interface AppDeps {
-  env: Pick<Env, 'NETWORK_MODE'>
+  env: AppEnv
   logger: Logger
   checkDatabase: () => Promise<number>
+  /** Omitted only in tests that exercise infrastructure routes (health, error handling). */
+  services?: AppServices
 }
 
-export function buildApp(deps: AppDeps): FastifyInstance {
+export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   // Typed as Fastify's base logger so the instance keeps the default FastifyInstance type.
   const loggerInstance: FastifyBaseLogger = deps.logger
   const app = Fastify({
@@ -63,6 +74,23 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   )
 
   registerHealthRoutes(app, deps)
+
+  if (deps.services) {
+    const { services, env } = deps
+    const authOptions: AuthPluginOptions = {
+      auth: services.auth,
+      audit: services.audit,
+      logger: deps.logger,
+      appOrigin: env.APP_ORIGIN,
+      cookieSecure: env.COOKIE_SECURE ? env.COOKIE_SECURE === 'true' : env.APP_ENV === 'production',
+      sessionTtlMs: env.SESSION_TTL_HOURS * 3_600_000,
+      now: services.now,
+    }
+    await registerAuth(app, authOptions)
+    const guards = createGuards(authOptions)
+    registerAuthRoutes(app, { auth: services.auth, guards, cookie: authOptions })
+    registerUserRoutes(app, { users: services.users, guards })
+  }
 
   return app
 }

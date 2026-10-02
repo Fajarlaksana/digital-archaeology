@@ -2,10 +2,13 @@
  * Development seed: Sepolia network + its native asset + common ERC-20 test tokens.
  * Idempotent — safe to run repeatedly.
  *
- * Users are NOT seeded here: password hashing arrives in Phase 3, and the SUPER_ADMIN
- * account is created only through the server-side CLI (ADR-003).
+ * In APP_ENV=development, also creates one user per role (except SUPER_ADMIN) with the password
+ * from SEED_DEV_PASSWORD. Existing users are left untouched. SUPER_ADMIN accounts are created
+ * only through the server-side CLI: `pnpm --filter backend user:create` (ADR-003).
  */
 import { createLogger } from '@da/shared'
+import { hashPassword, passwordPolicyViolation } from '../src/auth/password'
+import type { Role } from '../src/generated/prisma/enums'
 import { loadEnvFile } from '../src/config/env'
 import { createPrismaClient } from '../src/lib/prisma'
 
@@ -26,6 +29,13 @@ const SEPOLIA = {
   rpcUrlEnv: 'SEPOLIA_RPC_URL',
   explorerUrl: 'https://sepolia.etherscan.io',
 } as const
+
+const DEV_USERS: Array<{ email: string; name: string; role: Role }> = [
+  { email: 'admin@dev.local', name: 'Dev Admin', role: 'ADMIN' },
+  { email: 'analyst@dev.local', name: 'Dev Analyst', role: 'ANALYST' },
+  { email: 'reviewer@dev.local', name: 'Dev Reviewer', role: 'REVIEWER' },
+  { email: 'auditor@dev.local', name: 'Dev Auditor', role: 'AUDITOR' },
+]
 
 const SEPOLIA_TOKENS: TokenSeed[] = [
   {
@@ -85,7 +95,26 @@ try {
   }
 
   const assets = await db.asset.count({ where: { networkId: network.id } })
-  logger.info({ network: network.name, assets }, 'SEED_COMPLETED')
+
+  let devUsers = 0
+  const devPassword = process.env.SEED_DEV_PASSWORD
+  if ((process.env.APP_ENV ?? 'development') === 'development' && devPassword) {
+    const violation = passwordPolicyViolation(devPassword)
+    if (violation) throw new Error(`SEED_DEV_PASSWORD: ${violation}`)
+    for (const user of DEV_USERS) {
+      if (await db.user.findUnique({ where: { email: user.email } })) continue
+      await db.user.create({
+        data: {
+          email: user.email,
+          name: user.name,
+          passwordHash: await hashPassword(devPassword),
+          roles: { create: [{ role: user.role }] },
+        },
+      })
+      devUsers += 1
+    }
+  }
+  logger.info({ network: network.name, assets, devUsersCreated: devUsers }, 'SEED_COMPLETED')
 } finally {
   await db.$disconnect()
 }
