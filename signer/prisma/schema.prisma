@@ -1,0 +1,93 @@
+// Vault database (da_vault) — accessed ONLY by the signer service (ADR-008).
+// The application backend has no credentials for this database.
+//
+// Nothing here is readable without the SUPER_ADMIN passphrase:
+//   passphrase --Argon2id--> KEK --AES-256-GCM--> Master Key --AES-256-GCM--> private keys
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Singleton (id = 1, enforced by a CHECK constraint): the wrapped master key.
+model VaultConfig {
+  id                 Int      @id @default(1)
+  formatVersion      Int      @default(1) @map("format_version")
+  kdfAlgorithm       String   @map("kdf_algorithm")
+  kdfMemoryCost      Int      @map("kdf_memory_cost")
+  kdfTimeCost        Int      @map("kdf_time_cost")
+  kdfParallelism     Int      @map("kdf_parallelism")
+  /// Master key wrapped with the KEK derived from the main passphrase: iv | tag | ciphertext.
+  mainSalt           Bytes    @map("main_salt")
+  mainWrappedKey     Bytes    @map("main_wrapped_key")
+  /// Same master key wrapped with the KEK of the offline recovery passphrase.
+  recoverySalt       Bytes    @map("recovery_salt")
+  recoveryWrappedKey Bytes    @map("recovery_wrapped_key")
+  initializedBy      String   @map("initialized_by")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@map("vault_config")
+}
+
+enum VaultKeyType {
+  /// Imported as a raw private key.
+  PRIVATE_KEY
+  /// Derived from a seed phrase at import; only the derived key is stored, never the seed (ADR-017).
+  DERIVED_FROM_MNEMONIC
+}
+
+/// One encrypted private key per (chain, address). AAD binds each ciphertext to its address.
+model VaultKey {
+  id             String       @id @default(uuid()) @db.Uuid
+  chainType      String       @map("chain_type")
+  /// Canonical address (lower-case for EVM) — also part of the AES-GCM associated data.
+  address        String
+  keyType        VaultKeyType @map("key_type")
+  /// Informational only (e.g. m/44'/60'/0'/0/0); the seed itself is never stored.
+  derivationPath String?      @map("derivation_path")
+  iv             Bytes
+  authTag        Bytes        @map("auth_tag")
+  ciphertext     Bytes
+  importedBy     String       @map("imported_by")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  lastUsedAt     DateTime?    @map("last_used_at")
+
+  @@unique([chainType, address])
+  @@map("vault_keys")
+}
+
+enum VaultEventType {
+  INIT
+  UNLOCK
+  UNLOCK_FAILED
+  LOCK
+  AUTO_LOCK
+  PASSPHRASE_CHANGED
+  RECOVERED
+  RECOVERY_FAILED
+  KEY_IMPORTED
+  KEY_REVEALED
+  REVEAL_FAILED
+  MESSAGE_SIGNED
+  TRANSACTION_SIGNED
+}
+
+/// Append-only (trigger). Never contains key material, passphrases or plaintext.
+model VaultEvent {
+  id        String         @id @default(uuid()) @db.Uuid
+  sequence  BigInt         @unique @default(autoincrement())
+  type      VaultEventType
+  /// Backend user id that triggered the action (opaque here).
+  actor     String?
+  address   String?
+  metadata  Json?
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  @@index([type, createdAt])
+  @@map("vault_events")
+}

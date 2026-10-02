@@ -40,7 +40,9 @@ Kebutuhan lengkap: `system_analysis_digital_archaeology.md`. Revisi & keputusan:
 - Install: `pnpm install` (build script dependency harus diizinkan di `allowBuilds` pada `pnpm-workspace.yaml`)
 - Worker scan dan scheduler `maintenance` (harga tiap 60 menit, scan harian 02:00 WIB) berjalan di proses backend dan butuh Redis.
 - Infra lokal: `docker compose up -d`. Postgres di port host **5434** (`POSTGRES_HOST_PORT`) dan Redis 6379. DB `digital_archaeology` (user `da`), `da_vault` (user `da_vault`). Lihat ADR-013
-- Dev (backend :3000 + frontend :5173): `pnpm dev`
+- Dev (backend :3000 + frontend :5173 + signer :4000 loopback): `pnpm dev`
+- Signer: migrasi vault `pnpm --filter signer db:deploy`; test `pnpm --filter signer test` (DB vault per-run `<db>_test_*`). Backend ↔ signer wajib HMAC (`signRequest` dari `@da/shared`)
+- Di kode signer: key material selalu `Buffer`, dihapus dengan `wipe()` setelah dipakai; jangan pernah log body request signer
 - Test semua: `pnpm test` · satu package: `pnpm --filter backend test`
 - Lint, typecheck, format: `pnpm lint`, `pnpm typecheck`, `pnpm format`
 - Buat user via CLI (satu-satunya cara untuk SUPER_ADMIN): `pnpm --filter backend user:create --email .. --name .. --role ..`

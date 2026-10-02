@@ -2,7 +2,7 @@
 
 Setiap keputusan penting dicatat di sini agar alasannya tidak hilang. Status yang dipakai: **Proposed** (usulan), **Accepted** (diterima), **Superseded** (diganti oleh ADR lain).
 
-Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-016 sudah diputuskan (ADR-011 digantikan ADR-013).
+Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-017 sudah diputuskan (ADR-011 digantikan ADR-013).
 
 ---
 
@@ -170,6 +170,22 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-0
   5. **Penjadwal BullMQ** (`maintenance` queue, job scheduler, aman untuk banyak instance): harga tiap 60 menit dan scan semua network aktif setiap hari pukul 02:00 `Asia/Jakarta`. Scan terjadwal: `created_by = NULL`, `trigger = SCHEDULED`, dan audit `SCAN_SCHEDULED` dengan aktor SYSTEM. Network tanpa konfigurasi atau tanpa address dilewati dengan log. Scan hanya membaca (aturan keras #5).
   6. **Dashboard per network** (`?networkId=`) selain ringkasan global.
   7. **CSV:** RFC 4180, BOM UTF-8, CRLF, dan proteksi formula injection (OWASP) untuk semua sel. Kolom estimasi, simulasi, dan sumber harga dibuat eksplisit (SA 13: data publik, estimasi, otorisasi, dan status tidak dicampur). Maksimal 50.000 address per export.
+
+## ADR-017 — Implementasi Key Vault (Fase 7a)
+- **Status:** Accepted
+- **Tanggal:** 2026-10-03
+- **Keputusan** (melengkapi ADR-008):
+  1. **Seed phrase tidak pernah disimpan** (keputusan pemilik projek). Saat import, seed hanya dipakai untuk menurunkan private key address yang dimaksud lewat derivation path, lalu dibuang. Vault menyimpan key turunan itu dengan `key_type = DERIVED_FROM_MNEMONIC` dan path-nya sebagai informasi. Jika vault bocor, address lain dari seed yang sama tidak ikut terancam.
+  2. **AAD mengikat setiap ciphertext ke tujuannya:** Master Key yang dibungkus memakai AAD `da-vault/master-key/v1/main|recovery`, dan key memakai AAD yang berisi chain + address lower-case. Ciphertext yang dipindahkan ke baris lain atau dipakai untuk tujuan lain gagal didekripsi.
+  3. **Parameter KDF disimpan per vault** (Argon2id 64 MiB, 3 pass, paralelisme 1). Parameter bisa dinaikkan nanti tanpa merusak bungkus lama.
+  4. **HMAC backend ↔ signer:** `HMAC-SHA256(timestamp \n METHOD \n path+query \n sha256(body mentah))`, jendela ±60 detik, perbandingan constant-time, dan signature diingat 120 detik (anti-replay). Body diverifikasi dari teks mentah, bukan hasil serialisasi ulang. Secret ≥ 32 karakter.
+  5. **Signer hanya bind ke loopback** kecuali `SIGNER_ALLOW_NON_LOOPBACK=true` (untuk jaringan container privat di produksi).
+  6. **Error tidak pernah memuat input:** validasi hanya menyebut nama field, dan passphrase salah dijawab "Wrong passphrase" dengan event `UNLOCK_FAILED`. Batas 5 kegagalan per 15 menit berlaku untuk unlock, ganti passphrase, dan recovery sekaligus.
+  7. Vault tetap **terkunci** setelah init: unlock selalu merupakan aksi terpisah yang tercatat.
+- **Batasan yang diketahui (dicatat dengan jujur):**
+  - Passphrase datang sebagai string JavaScript dan tidak bisa ditimpa paksa sebelum garbage collection. Master Key, KEK, dan key yang didekripsi disimpan sebagai `Buffer` lalu ditimpa nol setelah dipakai, tetapi salinan sementara di internal V8/OpenSSL di luar kendali aplikasi.
+  - Penghitung kegagalan unlock ada di memori proses signer, sehingga reset saat restart. Argon2id (64 MiB per percobaan) tetap membuat tebakan massal mahal.
+  - Di dev, satu `.env` dipakai bersama oleh backend dan signer. **Di produksi** signer harus mendapat env sendiri (`VAULT_DATABASE_URL` tidak boleh ada di env backend). Ini masuk checklist Fase 14.
 
 ---
 

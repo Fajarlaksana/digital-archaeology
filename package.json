@@ -7,7 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "pnpm --parallel --filter backend --filter frontend dev",
+    "dev": "pnpm --parallel --filter backend --filter frontend --filter signer dev",
     "test": "pnpm -r --if-present test",
     "lint": "eslint .",
     "typecheck": "pnpm -r --if-present typecheck",

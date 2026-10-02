@@ -159,14 +159,17 @@ M4 Production     : F12 → F13 → F14
 **Tujuan:** service `signer/` berdiri, key bisa disimpan aman, dan kepemilikan terbukti. Fase ini dikerjakan lebih awal dari signing transaksi karena verifikasi kepemilikan sudah butuh vault.
 
 **7a — Key Vault (service `signer/`)**
-- [ ] Package `signer/`: Fastify internal, listen hanya di jaringan internal, autentikasi backend↔signer (shared secret HMAC atau mTLS)
-- [ ] DB `da_vault` (Prisma schema terpisah): `vault_config`, `vault_keys`, `vault_events`
-- [ ] Inisialisasi vault: SUPER_ADMIN menetapkan passphrase utama + recovery passphrase, lalu generate Master Key, lalu wrap dua kali (Argon2id + AES-256-GCM)
-- [ ] Unlock/lock: unlock dengan passphrase + MFA, auto-lock setelah `VAULT_UNLOCK_TTL_MINUTES`, lock saat logout/restart
-- [ ] Import key (hex privkey atau seed + derivation path): derive address, cocokkan dengan inventory (`owner_reference` wajib), lalu enkripsi dan simpan. Jika tidak cocok, tolak
-- [ ] Ganti passphrase (rewrap MK) dan pemulihan dengan recovery passphrase
-- [ ] Reveal break-glass sesuai ADR-009 (flag `KEY_REVEAL_ENABLED`)
-- [ ] Halaman **Key Vault** (hanya SUPER_ADMIN): status lock, daftar address yang punya key (tanpa isi key), import, unlock, reveal
+> Dikerjakan dalam sesi: **7a** fondasi signer ✅ · **7b** import/reveal/UI · **7c** ownership verification · **7d** review keamanan.
+
+- [x] Package `signer/`: Fastify internal, **hanya loopback** (`SIGNER_ALLOW_NON_LOOPBACK` untuk override eksplisit), autentikasi HMAC-SHA256 (timestamp ±60 dtk, hash body, constant-time, anti-replay); hanya `GET /health` tanpa signature
+- [x] DB `da_vault` (Prisma schema terpisah, user DB terpisah): `vault_config` (singleton, CHECK), `vault_keys` (CHECK panjang IV/tag, address lower-case), `vault_events` (append-only trigger)
+- [x] Inisialisasi vault: passphrase utama + recovery passphrase (≥ 16 karakter, harus berbeda), Master Key acak 32 byte, dibungkus dua kali (Argon2id 64 MiB/3 → KEK, AES-256-GCM + AAD); vault tetap terkunci setelah init
+- [x] Unlock/lock di signer: MK hanya di memori (`Buffer`, ditimpa nol saat lock / auto-lock `VAULT_UNLOCK_TTL_MINUTES` / shutdown / crash); 5 passphrase salah → jeda 15 menit
+- [ ] Unlock dari UI dengan MFA + re-auth; lock otomatis saat logout SUPER_ADMIN (7b, di backend)
+- [ ] Import key (hex privkey, atau seed + derivation path → **hanya private key turunan yang disimpan**, ADR-017): derive address, cocokkan dengan inventory (`owner_reference` wajib), lalu enkripsi dengan AAD = address (7b)
+- [x] Ganti passphrase (rewrap MK) dan pemulihan dengan recovery passphrase (MK tetap sama, key lama tetap terbaca)
+- [ ] Reveal break-glass sesuai ADR-009 (flag `KEY_REVEAL_ENABLED`) (7b)
+- [ ] Halaman **Key Vault** (hanya SUPER_ADMIN): status lock, daftar address yang punya key (tanpa isi key), init, import, unlock, reveal (7b)
 
 **7b — Ownership Verification**
 - [ ] Upload/registrasi dokumen otorisasi (simpan hash + file terenkripsi, atau hanya referensi eksternal)
@@ -281,6 +284,7 @@ M4 Production     : F12 → F13 → F14
 | 2026-10-01 | F0 | ADR-001/002/004–007 Accepted: TypeScript stack, EVM Sepolia, internal use, >3 operator |
 | 2026-10-01 | F1 | Monorepo + shared/backend/frontend, 49 test hijau. Pending: verifikasi Docker (Docker Desktop gagal start) |
 | 2026-10-02 | F1 | Docker Desktop (Hyper-V) hidup: `docker compose up -d` terverifikasi (port 5434), dev DB pindah ke Docker (ADR-013) |
+| 2026-10-03 | F7a | Service signer: kriptografi vault (Argon2id + AES-256-GCM + AAD), unlock/lock/TTL, ganti passphrase & recovery, HMAC + anti-replay, loopback-only; 39 test signer, total 416 hijau |
 | 2026-10-03 | F6 | Kode selesai: valuasi CoinGecko (USD), simulasi testnet, scheduler harga + scan harian, dashboard, export CSV; 370 test hijau. M1 menunggu verifikasi live |
 | 2026-10-02 | F5 | Kode selesai: scanner RPC+Etherscan, analyzer basis transaksi keluar, BullMQ, UI scans; 305 test hijau. Tertunda: verifikasi live (key Sepolia) |
 | 2026-10-02 | F4 | Selesai. Networks, ChainAdapter EVM, inventaris address, arsip, import CSV preview→simpan; 257 test hijau |
