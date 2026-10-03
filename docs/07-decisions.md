@@ -228,6 +228,22 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-0
   - String JavaScript (passphrase, hex key untuk viem) tetap tidak bisa dihapus (ADR-017).
   - Antrean passphrase tidak dibatasi panjangnya. Request yang menunggu terlalu lama bisa timeout di backend (30 detik) padahal signer tetap memprosesnya kemudian; audit backend lalu mencatat FAILURE untuk aksi yang akhirnya berhasil. Kemungkinannya kecil karena aksi ini hanya untuk SUPER_ADMIN.
 
+## ADR-020 — Destination whitelist (Fase 8a)
+- **Status:** Accepted
+- **Tanggal:** 2026-10-04
+- **Konteks:** aset hasil recovery hanya boleh dikirim ke wallet tujuan yang sudah disetujui (SA 4.8, aturan maker-checker ADR-007). Risiko utamanya salah ketik atau address tujuan yang ditukar (misalnya clipboard hijacking).
+- **Keputusan** (dipilih pemilik projek: approval + bukti signature):
+  1. **Dua syarat untuk APPROVED:** (a) bukti kendali, berupa signature EIP-191 dari address tujuan atas challenge sekali pakai, dan (b) keputusan REVIEWER. Ditegakkan di service dan di DB (CHECK `destinations_approved_requires_proof`).
+  2. **Maker-checker diperluas:** pemutus tidak boleh peminta (CHECK `approvals_decider_not_requester` yang sudah ada), pembuat, maupun pembukti (`SELF_APPROVAL`, 403), termasuk user yang memegang ANALYST + REVIEWER sekaligus.
+  3. **Challenge destination punya judul sendiri** (`Digital Archaeology — Destination Verification`, `buildDestinationChallengeMessage`). Parser ownership di signer menolaknya, jadi vault tidak pernah menandatangani challenge destination. Pembuktian hanya lewat wallet browser atau tempel signature, oleh pemegang wallet tujuan.
+  4. **Verifikasi signature pindah ke `ChainAdapter.verifyMessage`** (EVM: viem `verifyMessage`, EOA saja). Ownership (7c) memakai jalur yang sama.
+  5. **Identitas tidak berubah:** address & network destination immutable (trigger DB). Ganti tujuan = destination baru.
+  6. **Siklus status:** PENDING_APPROVAL → APPROVED / REJECTED; APPROVED → DISABLED; REJECTED/DISABLED → (ajukan ulang) PENDING_APPROVAL dengan bukti dikosongkan dan approval request baru. REJECTED/DISABLED wajib beralasan (CHECK). Keputusan memakai update bersyarat agar dua REVIEWER tidak bisa memutuskan bersamaan.
+  7. **Konfirmasi ulang ≤ 5 menit** untuk approve/tolak/nonaktifkan: keputusan ini menentukan ke mana aset boleh dikirim.
+  8. Permission baru `destinations:read` untuk semua role (AUDITOR perlu melihat whitelist).
+- **Batasan:** smart-contract wallet (Safe, EIP-1271) belum bisa dibuktikan. Satu destination berlaku untuk satu network; address yang sama di network EVM lain perlu destination (dan bukti) sendiri.
+- **Alternatif:** approval saja (ditolak pemilik projek: terlalu bergantung pada ketelitian REVIEWER), dua REVIEWER (ditunda; bisa ditambahkan untuk mainnet).
+
 ---
 
 ## Jawaban pertanyaan terbuka (02-analysis bagian 5)

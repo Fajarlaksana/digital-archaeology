@@ -28,11 +28,12 @@ Kebutuhan lengkap: `system_analysis_digital_archaeology.md`. Revisi & keputusan:
 - Selalu pakai `createLogger` dari `@da/shared` dan lempar `AppError(code, ...)`. Jangan pakai `console.*` (lint error).
 - Role: `SUPER_ADMIN, ADMIN, ANALYST, REVIEWER, AUDITOR`. Endpoint memeriksa **permission** (bukan role) lewat `guards.permission('x:y')`. Peta role ke permission ada di `backend/src/auth/permissions.ts`. MFA wajib untuk SUPER_ADMIN/ADMIN/REVIEWER (ADR-012).
 - Endpoint baru wajib: guard permission, validasi body dengan Zod, dan masuk ke matriks test role × endpoint.
-- Integrasi chain melalui interface `ChainAdapter` (`backend/src/chains`), dipilih dengan `chainAdapterFor(chainType)`. Implementasi pertama: EVM (viem) di testnet Sepolia. Jangan memvalidasi address di luar adapter.
+- Integrasi chain melalui interface `ChainAdapter` (`backend/src/chains`), dipilih dengan `chainAdapterFor(chainType)`. Implementasi pertama: EVM (viem) di testnet Sepolia. Jangan memvalidasi address atau memverifikasi signature di luar adapter (`checkAddress`, `verifyMessage`).
 - Address tidak pernah dihapus, hanya diarsipkan (`archived_at`). Query untuk scan atau proses lain wajib mengecualikan address yang diarsipkan.
 - Baca blockchain hanya lewat `ChainReader` (RPC) dan `ActivityProvider` (explorer) dari `chainClients` (`backend/src/chains/clients.ts`). Inaktivitas dihitung dari transaksi KELUAR (ADR-015). Dalam test pakai `tests/integration/fake-chain.ts`, jangan memanggil jaringan sungguhan (kecuali `*.live.test.ts`).
 - Jangan pernah memasukkan URL RPC atau API key ke pesan error atau log.
 - Signer tidak boleh punya endpoint tanda tangan pesan bebas: hanya challenge kepemilikan yang lolos `parseChallengeMessage` (ADR-018). Dokumen otorisasi tidak diunggah, hanya SHA-256-nya.
+- Maker-checker: keputusan approval (destination, kelak transaksi) tidak boleh diambil peminta, pembuat, atau pembukti (`SELF_APPROVAL`); tegakkan di service **dan** DB. Destination hanya bisa APPROVED setelah bukti kendali via signature (ADR-020).
 - Nilai fiat: hitung hanya dengan `domain/valuation.ts` (decimal.js), simpan sebagai string/NUMERIC, dan tampilkan dengan `formatFiat` (tanpa `Number`). Nilai testnet wajib berlabel SIMULASI dan dijumlahkan terpisah (ADR-016).
 - Export CSV wajib lewat `lib/csv.ts` (proteksi formula injection).
 

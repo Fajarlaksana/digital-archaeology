@@ -1,4 +1,4 @@
-import { getAddress } from 'viem'
+import { getAddress, verifyMessage } from 'viem'
 import type { AddressCheck, ChainAdapter } from '../types'
 
 const HEX_ADDRESS = /^0x[0-9a-fA-F]{40}$/
@@ -34,7 +34,28 @@ export function checkEvmAddress(input: string): AddressCheck {
   return { ok: true, address: canonical }
 }
 
+const SIGNATURE = /^0x[0-9a-fA-F]{130}$/
+
+/** EIP-191 signature check by public-key recovery (EOA only; EIP-1271 is not supported). */
+export async function verifyEvmMessage(input: {
+  address: string
+  message: string
+  signature: string
+}): Promise<boolean> {
+  if (!SIGNATURE.test(input.signature) || !HEX_ADDRESS.test(input.address)) return false
+  try {
+    return await verifyMessage({
+      address: input.address as `0x${string}`,
+      message: input.message,
+      signature: input.signature as `0x${string}`,
+    })
+  } catch {
+    return false
+  }
+}
+
 export const evmAdapter: ChainAdapter = {
   chainType: 'EVM',
   checkAddress: checkEvmAddress,
+  verifyMessage: verifyEvmMessage,
 }

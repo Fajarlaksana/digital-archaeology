@@ -55,6 +55,13 @@ export const NAV_GROUPS: NavGroup[] = [
         description: 'Verifikasi kepemilikan & dokumen otorisasi.',
       },
       {
+        path: '/destinations',
+        permission: 'destinations:read',
+        label: 'Destinations',
+        phase: 8,
+        description: 'Wallet tujuan yang sudah dibuktikan dan di-approve.',
+      },
+      {
         path: '/recovery',
         permission: 'transactions:read',
         label: 'Recovery',
@@ -87,7 +94,7 @@ export const NAV_GROUPS: NavGroup[] = [
         permission: 'networks:manage',
         label: 'Settings',
         phase: 8,
-        description: 'Aset, destination whitelist, dan scheduler.',
+        description: 'Aset dan scheduler.',
       },
       {
         path: '/users',

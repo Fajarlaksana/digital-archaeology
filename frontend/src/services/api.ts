@@ -648,3 +648,70 @@ export const ownershipApi = {
       body: {},
     }),
 }
+
+// ─── Destination whitelist (Phase 8a) ───
+
+export type DestinationStatus = 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'DISABLED'
+type Person = { id: string; name: string } | null
+
+export interface PublicDestination {
+  id: string
+  network: { id: string; name: string; displayName: string; isTestnet: boolean }
+  address: string
+  label: string
+  status: DestinationStatus
+  statusReason: string | null
+  controlVerifiedAt: string | null
+  controlVerifiedBy: Person
+  createdBy: Person
+  createdAt: string
+  approvals: Array<{
+    id: string
+    requestedBy: Person
+    decidedBy: Person
+    decision: 'APPROVED' | 'REJECTED' | null
+    reason: string | null
+    decidedAt: string | null
+    createdAt: string
+  }>
+  challenges: Array<{
+    id: string
+    method: 'WALLET' | 'MANUAL' | 'VAULT' | null
+    result: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'EXPIRED'
+    issuedAt: string
+    expiresAt: string
+    usedAt: string | null
+  }>
+}
+
+const destinationAction = (id: string, action: string, body: object = {}) =>
+  apiFetch<{ destination: PublicDestination }>(`/api/destinations/${id}/${action}`, {
+    method: 'POST',
+    body,
+  }).then((r) => r.destination)
+
+export const destinationsApi = {
+  list: (status?: DestinationStatus) =>
+    apiFetch<{ destinations: PublicDestination[] }>(
+      `/api/destinations${status ? `?status=${status}` : ''}`,
+    ).then((r) => r.destinations),
+  create: (input: { networkId: string; address: string; label: string }) =>
+    apiFetch<{ destination: PublicDestination }>('/api/destinations', {
+      method: 'POST',
+      body: input,
+    }).then((r) => r.destination),
+  challenge: (id: string) =>
+    apiFetch<{ challenge: OwnershipChallenge }>(`/api/destinations/${id}/challenges`, {
+      method: 'POST',
+      body: {},
+    }).then((r) => r.challenge),
+  submitSignature: (challengeId: string, signature: string, method: 'WALLET' | 'MANUAL') =>
+    apiFetch<{ result: 'VERIFIED'; destination: PublicDestination }>(
+      `/api/destination-challenges/${challengeId}/signature`,
+      { method: 'POST', body: { signature, method } },
+    ),
+  approve: (id: string, note: string | null) => destinationAction(id, 'approve', { note }),
+  reject: (id: string, reason: string) => destinationAction(id, 'reject', { reason }),
+  disable: (id: string, reason: string) => destinationAction(id, 'disable', { reason }),
+  resubmit: (id: string) => destinationAction(id, 'resubmit'),
+}

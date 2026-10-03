@@ -9,6 +9,7 @@ import { registerAuthRoutes } from './controllers/auth'
 import { registerHealthRoutes } from './controllers/health'
 import { registerNetworkRoutes } from './controllers/networks'
 import { registerOverviewRoutes } from './controllers/overview'
+import { registerDestinationRoutes } from './controllers/destinations'
 import { registerOwnershipRoutes } from './controllers/ownership'
 import { registerScanRoutes } from './controllers/scans'
 import { registerUserRoutes } from './controllers/users'
@@ -130,6 +131,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       addresses: services.addresses,
       guards,
     })
+    registerDestinationRoutes(app, { destinations: services.destinations, guards })
     registerOverviewRoutes(app, {
       dashboard: services.dashboard,
       reports: services.reports,

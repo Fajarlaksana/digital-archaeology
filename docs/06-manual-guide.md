@@ -248,9 +248,25 @@ Halaman **Authorizations** menampilkan semua otorisasi dengan filter status; kli
 
 ## 10. Wallet tujuan & kelayakan · *Fase 8*
 
-1. **Settings → Destinations → Tambah**: address tujuan + label.
-2. REVIEWER lain meng-approve destination tersebut.
-3. Menu **Recovery** menampilkan status kelayakan tiap address:
+### 10.1 Menambah destination · *8a* ✅ · ANALYST
+1. Buka **Destinations → Tambah destination**, pilih network, isi **address tujuan** dan **label**, lalu **Simpan**. Address dengan huruf besar/kecil campuran harus checksum-nya benar; address salah ketik ditolak.
+2. Status awal **Menunggu approval**. Address dan network tidak bisa diubah lagi.
+
+### 10.2 Membuktikan kendali · ANALYST (bersama pemilik wallet tujuan)
+1. Klik **Buktikan kendali**. Sistem menampilkan pesan "Destination Verification" yang berlaku 15 menit dan hanya bisa dipakai sekali.
+2. Tanda tangani pesan dengan **wallet tujuan itu sendiri**: lewat **wallet browser** (akun aktif harus address tujuan), atau tanda tangani di perangkat lain lalu **tempel signature**.
+3. Jika berhasil, tertulis **Bukti kendali: terverifikasi**. Signature dari address lain ditolak; buat challenge baru.
+
+> Bukti ini mencegah salah ketik atau address tujuan yang ditukar: hanya pemegang wallet tujuan yang bisa membuat signature yang cocok.
+
+### 10.3 Approval · REVIEWER
+1. Destination dengan bukti kendali bisa di-**Approve**. Sistem meminta konfirmasi password + kode authenticator bila konfirmasi terakhir lebih dari 5 menit lalu.
+2. **Tolak** dan **Nonaktifkan** (untuk destination yang sudah approved, misalnya wallet hilang) wajib disertai alasan.
+3. REVIEWER yang ikut mengajukan atau membuktikan destination **tidak bisa** memutuskannya; tombol keputusan disembunyikan dan server menolak dengan `SELF_APPROVAL`.
+4. Destination yang ditolak/nonaktif bisa **Ajukan ulang** oleh ANALYST. Bukti kendali dan approval diulang dari awal.
+
+### 10.4 Status kelayakan · *8b*
+Menu **Recovery** menampilkan status kelayakan tiap address:
 
 | Status | Arti | Tindakan |
 |--------|------|----------|

@@ -7,6 +7,8 @@ export const ERROR_HTTP_STATUS = {
   VALIDATION_ERROR: 400,
   UNAUTHORIZED: 401,
   FORBIDDEN: 403,
+  /** Maker-checker: the decider was the requester, creator or prover (ADR-007). */
+  SELF_APPROVAL: 403,
   NOT_FOUND: 404,
   CONFLICT: 409,
   RATE_LIMITED: 429,

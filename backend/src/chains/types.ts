@@ -14,6 +14,11 @@ export interface ChainAdapter {
   readonly chainType: ChainType
   /** Validates and returns the canonical form to store (EIP-55 checksum for EVM). */
   checkAddress(input: string): AddressCheck
+  /**
+   * True only when `signature` is a signature of `message` by `address` (EVM: EIP-191
+   * personal_sign, EOA only). Never throws: malformed input is simply not valid.
+   */
+  verifyMessage(input: { address: string; message: string; signature: string }): Promise<boolean>
 }
 
 /** Read-only access to one network through its RPC node — the source of truth for balances. */

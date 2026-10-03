@@ -7,6 +7,7 @@ import type { SignerClient } from '../signer/client'
 import { createAddressRepository } from '../repositories/address.repository'
 import { createAuditLogRepository } from '../repositories/audit-log.repository'
 import { createAuthorizationRepository } from '../repositories/authorization.repository'
+import { createDestinationRepository } from '../repositories/destination.repository'
 import { createNetworkRepository } from '../repositories/network.repository'
 import { createPriceRepository } from '../repositories/price.repository'
 import { createScanRepository } from '../repositories/scan.repository'
@@ -17,6 +18,7 @@ import { createAuthService } from './auth.service'
 import { createChainHealth } from './chain-health'
 import { createDashboardService, type ScheduleInfo } from './dashboard.service'
 import { createNetworkService } from './network.service'
+import { createDestinationService } from './destination.service'
 import { createOwnershipService } from './ownership.service'
 import { createReportService } from './report.service'
 import { createScanService } from './scan.service'
@@ -109,6 +111,14 @@ export function createServices(db: Database, config: ServiceConfig) {
     ownership: createOwnershipService({
       authorizations: createAuthorizationRepository(db),
       signer: config.signer,
+      audit,
+      logger: config.logger,
+      challengeTtlMs: config.challengeTtlMs ?? 15 * 60_000,
+      now,
+    }),
+    destinations: createDestinationService({
+      destinations: createDestinationRepository(db),
+      networks,
       audit,
       logger: config.logger,
       challengeTtlMs: config.challengeTtlMs ?? 15 * 60_000,

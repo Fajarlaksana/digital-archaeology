@@ -18,6 +18,7 @@ const READ_INVENTORY: Permission[] = [
   'reports:read',
   'transactions:read',
   'authorizations:read',
+  'destinations:read',
 ]
 
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {

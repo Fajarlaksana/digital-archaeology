@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
-import { verifyMessage } from 'viem'
 import { AppError, buildChallengeMessage, type Logger } from '@da/shared'
+import { chainAdapterFor } from '../chains'
 import type { AuthorizationStatus, AuthorizationType } from '../generated/prisma/client'
 import type { AuditLogRepository } from '../repositories/audit-log.repository'
 import type {
@@ -123,18 +123,11 @@ export function createOwnershipService(deps: {
       })
     }
 
-    let valid = false
-    if (SIGNATURE.test(signature)) {
-      try {
-        valid = await verifyMessage({
-          address: challenge.address.address as `0x${string}`,
-          message: challenge.message,
-          signature: signature as `0x${string}`,
-        })
-      } catch {
-        valid = false
-      }
-    }
+    const valid = await chainAdapterFor(challenge.address.network.chainType).verifyMessage({
+      address: challenge.address.address,
+      message: challenge.message,
+      signature,
+    })
     await authorizations.setResult(challenge.id, {
       result: valid ? 'VERIFIED' : 'REJECTED',
       method,

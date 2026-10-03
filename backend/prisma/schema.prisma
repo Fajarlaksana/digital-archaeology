@@ -347,17 +347,19 @@ model User {
   createdAt          DateTime   @default(now()) @map("created_at")
   updatedAt          DateTime   @updatedAt @map("updated_at")
 
-  roles                 UserRole[]           @relation("UserRoles")
+  roles                 UserRole[]             @relation("UserRoles")
   sessions              Session[]
-  grantedRoles          UserRole[]           @relation("RoleGrantedBy")
-  createdAddresses      Address[]            @relation("AddressCreatedBy")
-  createdScans          Scan[]               @relation("ScanCreatedBy")
-  createdAuthorizations Authorization[]      @relation("AuthorizationCreatedBy")
-  createdChallenges     OwnershipChallenge[] @relation("ChallengeCreatedBy")
-  createdDestinations   Destination[]        @relation("DestinationCreatedBy")
-  requestedApprovals    Approval[]           @relation("ApprovalRequestedBy")
-  decidedApprovals      Approval[]           @relation("ApprovalDecidedBy")
-  createdTransactions   Transaction[]        @relation("TransactionCreatedBy")
+  grantedRoles          UserRole[]             @relation("RoleGrantedBy")
+  createdAddresses      Address[]              @relation("AddressCreatedBy")
+  createdScans          Scan[]                 @relation("ScanCreatedBy")
+  createdAuthorizations Authorization[]        @relation("AuthorizationCreatedBy")
+  createdChallenges     OwnershipChallenge[]   @relation("ChallengeCreatedBy")
+  createdDestinations   Destination[]          @relation("DestinationCreatedBy")
+  verifiedDestinations  Destination[]          @relation("DestinationVerifiedBy")
+  destinationChallenges DestinationChallenge[] @relation("DestinationChallengeCreatedBy")
+  requestedApprovals    Approval[]             @relation("ApprovalRequestedBy")
+  decidedApprovals      Approval[]             @relation("ApprovalDecidedBy")
+  createdTransactions   Transaction[]          @relation("TransactionCreatedBy")
   auditLogs             AuditLog[]
 
   @@map("users")
@@ -450,26 +452,58 @@ model OwnershipChallenge {
 
 // ─────────────────── Destinations & approvals ───────────────────
 
+/// Whitelisted wallet that recovered assets may be sent to (Phase 8a, ADR-020).
+/// APPROVED requires a signed proof of control (control_verified_at) AND a REVIEWER decision.
 model Destination {
-  id          String            @id @default(uuid()) @db.Uuid
-  networkId   String            @map("network_id") @db.Uuid
-  address     String
-  label       String
-  status      DestinationStatus @default(PENDING_APPROVAL)
-  createdById String?           @map("created_by") @db.Uuid
-  createdAt   DateTime          @default(now()) @map("created_at")
-  updatedAt   DateTime          @updatedAt @map("updated_at")
+  id                  String            @id @default(uuid()) @db.Uuid
+  networkId           String            @map("network_id") @db.Uuid
+  /// Canonical form from the chain adapter (EIP-55 for EVM). Never edited after creation.
+  address             String
+  label               String
+  status              DestinationStatus @default(PENDING_APPROVAL)
+  /// Why it was rejected / disabled (shown in the UI and audit).
+  statusReason        String?           @map("status_reason")
+  /// Set when the address owner signed a destination challenge; cleared on resubmission.
+  controlVerifiedAt   DateTime?         @map("control_verified_at")
+  controlVerifiedById String?           @map("control_verified_by") @db.Uuid
+  createdById         String?           @map("created_by") @db.Uuid
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
 
-  network      Network       @relation(fields: [networkId], references: [id])
-  createdBy    User?         @relation("DestinationCreatedBy", fields: [createdById], references: [id])
-  approvals    Approval[]
-  transactions Transaction[]
+  network         Network                @relation(fields: [networkId], references: [id])
+  createdBy       User?                  @relation("DestinationCreatedBy", fields: [createdById], references: [id])
+  controlVerifier User?                  @relation("DestinationVerifiedBy", fields: [controlVerifiedById], references: [id])
+  approvals       Approval[]
+  transactions    Transaction[]
+  challenges      DestinationChallenge[]
 
   @@unique([networkId, address])
   @@map("destinations")
 }
 
 /// Maker-checker record (ADR-007). decided_by must differ from requested_by — enforced in the service layer.
+/// Single-use signed challenge proving control of a destination (Phase 8a).
+model DestinationChallenge {
+  id            String           @id @default(uuid()) @db.Uuid
+  destinationId String           @map("destination_id") @db.Uuid
+  nonce         String           @unique
+  message       String
+  method        ChallengeMethod?
+  issuedAt      DateTime         @map("issued_at")
+  expiresAt     DateTime         @map("expires_at")
+  usedAt        DateTime?        @map("used_at")
+  signature     String?
+  result        ChallengeResult  @default(PENDING)
+  createdById   String           @map("created_by") @db.Uuid
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  destination Destination @relation(fields: [destinationId], references: [id])
+  createdBy   User        @relation("DestinationChallengeCreatedBy", fields: [createdById], references: [id])
+
+  @@index([destinationId])
+  @@map("destination_challenges")
+}
+
 model Approval {
   id            String            @id @default(uuid()) @db.Uuid
   subjectType   ApprovalSubject   @map("subject_type")

@@ -202,7 +202,17 @@ M4 Production     : F12 → F13 → F14
 
 ## Fase 8 — Destination Whitelist & Eligibility Engine · M
 
-- [ ] CRUD `destinations` + approval oleh REVIEWER (bukan pembuatnya)
+> Dikerjakan dalam sesi: **8a** destination whitelist ✅ · **8b** fee estimator + eligibility engine.
+
+**8a — Destination whitelist** (ADR-020)
+- [x] `destinations` per network: dibuat ANALYST (`destinations:create`), address dikanonkan lewat `ChainAdapter`, tidak pernah dihapus/diedit (trigger DB: address & network immutable)
+- [x] Bukti kendali wajib: challenge sekali pakai "Destination Verification" (judul sendiri, sehingga signer tidak pernah mau menandatanganinya), lewat wallet browser atau tempel signature; verifikasi lewat `ChainAdapter.verifyMessage`
+- [x] Approval oleh REVIEWER (`destinations:approve` + konfirmasi ulang ≤ 5 menit) yang **bukan** peminta, pembuat, atau pembukti (`SELF_APPROVAL`); CHECK DB: APPROVED wajib punya bukti, REJECTED/DISABLED wajib punya alasan, keputusan tidak boleh oleh peminta
+- [x] Tolak (alasan wajib), nonaktifkan destination APPROVED (alasan wajib), ajukan ulang (bukti + approval diulang dari nol)
+- [x] Permission baru `destinations:read` (semua role); audit setiap langkah; matriks test role × endpoint
+- [x] Halaman **Destinations** (daftar + filter status, tambah, buktikan kendali, approve/tolak/nonaktifkan, riwayat keputusan)
+
+**8b — Fee estimator & eligibility engine**
 - [ ] Fee estimator (EIP-1559) + margin konfigurasi
 - [ ] Eligibility engine sesuai SA 4.7 + revisi 02-analysis bagian 2.6 (`NEEDS_GAS_FUNDING`) + cek key tersedia di vault (`NO_KEY_IN_VAULT`)
 - [ ] Field `recovery_status` + alasan, terlihat di UI
@@ -296,6 +306,7 @@ M4 Production     : F12 → F13 → F14
 | 2026-10-01 | F0 | ADR-001/002/004–007 Accepted: TypeScript stack, EVM Sepolia, internal use, >3 operator |
 | 2026-10-01 | F1 | Monorepo + shared/backend/frontend, 49 test hijau. Pending: verifikasi Docker (Docker Desktop gagal start) |
 | 2026-10-02 | F1 | Docker Desktop (Hyper-V) hidup: `docker compose up -d` terverifikasi (port 5434), dev DB pindah ke Docker (ADR-013) |
+| 2026-10-04 | F8a | Destination whitelist: bukti kendali via signature + approval REVIEWER independen (maker-checker di service & DB), halaman Destinations; 534 test hijau |
 | 2026-10-04 | F7d | Review keamanan Fase 7: 8 temuan diperbaiki (throttle paralel, KDF tersimpan, kuota reveal, wipe buffer, SIGNER_URL loopback, reveal setelah re-auth, nested form, matriks role) + bug nested form; 512 test hijau |
 | 2026-10-03 | F7c | Ownership verification: otorisasi + hash dokumen di browser, challenge sekali pakai, verifikasi via vault / wallet browser / tempel signature; 498 test hijau |
 | 2026-10-03 | F7b | Import/reveal/UI vault, endpoint backend + client HMAC, lock saat logout; uji E2E sungguhan backend→signer (DB sekali pakai) lulus; 458 test hijau |

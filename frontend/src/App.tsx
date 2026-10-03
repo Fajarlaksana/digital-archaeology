@@ -8,6 +8,7 @@ import { AddressDetailPage } from './pages/AddressDetailPage'
 import { AddressesPage } from './pages/AddressesPage'
 import { AuthorizationsPage } from './pages/AuthorizationsPage'
 import { DashboardPage } from './pages/DashboardPage'
+import { DestinationsPage } from './pages/DestinationsPage'
 import { KeyVaultPage } from './pages/KeyVaultPage'
 import { LoginPage } from './pages/LoginPage'
 import { MfaPage } from './pages/MfaPage'
@@ -24,6 +25,7 @@ const PAGES: Record<string, () => React.JSX.Element> = {
   '/scans': ScansPage,
   '/key-vault': KeyVaultPage,
   '/authorizations': AuthorizationsPage,
+  '/destinations': DestinationsPage,
 }
 
 /** Direct URL access to a page the user may not see sends them home (the API denies it anyway). */

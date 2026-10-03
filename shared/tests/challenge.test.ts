@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildChallengeMessage,
+  buildDestinationChallengeMessage,
   parseChallengeMessage,
+  parseDestinationChallengeMessage,
   type ChallengeFields,
+  type DestinationChallengeFields,
 } from '../src/challenge'
 
 const FIELDS: ChallengeFields = {
@@ -45,5 +48,29 @@ describe('ownership challenge', () => {
     ],
   ])('rejects %s', (_label, message) => {
     expect(parseChallengeMessage(message)).toBeNull()
+  })
+})
+
+describe('destination challenge', () => {
+  const DEST: DestinationChallengeFields = {
+    address: FIELDS.address,
+    networkName: 'sepolia',
+    chainId: 11155111,
+    destinationId: '7a1e2d3c-4b5a-4c6d-8e7f-0a1b2c3d4e5f',
+    nonce: 'b'.repeat(64),
+    issuedAt: new Date('2026-10-04T10:00:00.000Z'),
+    expiresAt: new Date('2026-10-04T10:15:00.000Z'),
+  }
+
+  it('has its own title and purpose, and round-trips', () => {
+    const message = buildDestinationChallengeMessage(DEST)
+    expect(message.split('\n')[0]).toBe('Digital Archaeology — Destination Verification')
+    expect(message).toContain(`Purpose: Verify control of destination ${DEST.destinationId}`)
+    expect(parseDestinationChallengeMessage(message)).toEqual(DEST)
+  })
+
+  it('is never accepted as an ownership challenge (the signer only signs those), and vice versa', () => {
+    expect(parseChallengeMessage(buildDestinationChallengeMessage(DEST))).toBeNull()
+    expect(parseDestinationChallengeMessage(buildChallengeMessage(FIELDS))).toBeNull()
   })
 })
