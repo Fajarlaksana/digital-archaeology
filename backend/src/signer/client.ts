@@ -55,6 +55,12 @@ export interface SignerClient {
     address: string
     passphrase: string
   }): Promise<{ privateKey: string }>
+  /** EIP-191 signature of an ownership challenge; the signer refuses any other message. */
+  signChallenge(input: {
+    actor: string
+    address: string
+    message: string
+  }): Promise<{ signature: string }>
 }
 
 /** Argon2id with 64 MiB runs per call, so allow generous time. */
@@ -128,5 +134,6 @@ export function createHttpSignerClient(options: {
     importKey: async (input) =>
       (await call<{ key: SignerKey }>('POST', '/vault/keys/import', input)).key,
     revealKey: (input) => call('POST', '/vault/keys/reveal', input),
+    signChallenge: (input) => call('POST', '/vault/keys/sign-challenge', input),
   }
 }

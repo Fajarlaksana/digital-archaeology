@@ -408,6 +408,8 @@ model Authorization {
   reference          String
   /// SHA-256 of the supporting document; the file itself is stored encrypted outside the DB.
   documentSha256     String?             @map("document_sha256")
+  /// Original file name, for humans (the file itself is never uploaded, ADR-018).
+  documentName       String?             @map("document_name")
   documentPath       String?             @map("document_path")
   verificationStatus AuthorizationStatus @default(UNVERIFIED) @map("verification_status")
   verifiedAt         DateTime?           @map("verified_at")

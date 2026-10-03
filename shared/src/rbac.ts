@@ -20,6 +20,7 @@ export const PERMISSIONS = [
   'reports:read',
   'authorizations:read',
   'authorizations:review',
+  'ownership:verify',
   'destinations:create',
   'destinations:approve',
   'transactions:read',

@@ -39,6 +39,7 @@ const services = createServices(db, {
   fiatCurrency: env.FIAT_CURRENCY,
   scheduleInfo: () => maintenance.info(),
   signer: createHttpSignerClient({ baseUrl: env.SIGNER_URL, secret: env.SIGNER_HMAC_SECRET }),
+  challengeTtlMs: env.CHALLENGE_TTL_MINUTES * 60_000,
 })
 const scanQueue = createScanQueue({
   redisUrl: env.REDIS_URL,

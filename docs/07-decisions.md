@@ -192,6 +192,23 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-0
   - Penghitung kegagalan unlock ada di memori proses signer, sehingga reset saat restart. Argon2id (64 MiB per percobaan) tetap membuat tebakan massal mahal.
   - Di dev, satu `.env` dipakai bersama oleh backend dan signer. **Di produksi** signer harus mendapat env sendiri (`VAULT_DATABASE_URL` tidak boleh ada di env backend). Ini masuk checklist Fase 14.
 
+## ADR-018 — Ownership verification (Fase 7c)
+- **Status:** Accepted
+- **Tanggal:** 2026-10-03
+- **Konteks:** SA 4.5 meminta bukti kepemilikan sebelum recovery. Perlu memutuskan cara menyimpan dokumen otorisasi, siapa boleh memverifikasi, dan bagaimana signer boleh menandatangani tanpa menjadi "tanda tangan apa saja".
+- **Keputusan:**
+  1. **Dokumen tidak diunggah.** Browser menghitung SHA-256 file (`crypto.subtle`); server hanya menyimpan sidik jari (CHECK `^[0-9a-f]{64}$`) + nama file. Dokumen asli disimpan pemilik di luar sistem dan bisa dicocokkan kapan saja. Ini menghindari penyimpanan file sensitif (KTP, surat kuasa) dan kebutuhan enkripsi file pada tahap ini.
+  2. **Format challenge tunggal** di `@da/shared` (`buildChallengeMessage` / `parseChallengeMessage`): judul tetap, address, network + chainId, ID otorisasi, nonce 32 byte, waktu terbit dan kedaluwarsa. Dipakai backend untuk membuat pesan dan oleh signer untuk menolak pesan lain.
+  3. **Signer hanya menandatangani challenge.** `POST /vault/keys/sign-challenge` mem-parse pesan dengan parser ketat, menolak address yang berbeda dan challenge kedaluwarsa, lalu mencatat `MESSAGE_SIGNED` dengan SHA-256 pesan (bukan isinya). Signer tidak punya endpoint "sign arbitrary message".
+  4. **Sekali pakai, atomik.** Challenge dikonsumsi (`used_at`) dengan update bersyarat **sebelum** signature dievaluasi, sehingga dua kiriman bersamaan tidak bisa sama-sama dinilai, dan signature salah membakar challenge (tidak ada tebak-ulang). Kegagalan memanggil signer (vault terkunci, signer mati) tidak membakar challenge.
+  5. **Permission baru `ownership:verify`** untuk ANALYST (pengelola inventaris) dan SUPER_ADMIN. Jalur vault tetap butuh `vault:manage` + konfirmasi ulang ≤ 5 menit. Semua role bisa melihat (`authorizations:read`).
+  6. **Status:** otorisasi baru = PENDING; address naik ke PENDING kecuali sudah VERIFIED (otorisasi tambahan tidak menurunkan status). Verifikasi berhasil → otorisasi VERIFIED + `verified_at`, address VERIFIED. Signature salah → challenge REJECTED, otorisasi tetap PENDING. Otorisasi yang lewat `expires_at` ditampilkan EXPIRED dan tidak bisa diverifikasi (juga bila kedaluwarsa saat challenge masih terbuka).
+- **Batasan yang diketahui:**
+  - `verifyMessage` (ecrecover) hanya untuk EOA; smart-contract wallet (EIP-1271) belum didukung.
+  - `authorization_status` address tidak otomatis turun saat otorisasi kedaluwarsa. **Fase 8/9 wajib memeriksa otorisasi VERIFIED yang masih berlaku**, bukan hanya kolom status address.
+  - Review otorisasi oleh REVIEWER (`authorizations:review`) belum dipakai; dipertimbangkan bersama maker-checker di Fase 9.
+- **Alternatif:** unggah dokumen terenkripsi (ditunda, butuh penyimpanan file + kunci), endpoint sign generik di signer (ditolak: bisa disalahgunakan untuk menandatangani permit/transaksi off-chain).
+
 ---
 
 ## Jawaban pertanyaan terbuka (02-analysis bagian 5)

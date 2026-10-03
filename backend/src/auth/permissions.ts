@@ -22,11 +22,18 @@ const READ_INVENTORY: Permission[] = [
 
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   // Key holder: vault + signing only. Deliberately no user management (separation of duties).
-  SUPER_ADMIN: [...READ_INVENTORY, 'vault:manage', 'transactions:sign', 'transactions:broadcast'],
+  SUPER_ADMIN: [
+    ...READ_INVENTORY,
+    'vault:manage',
+    'ownership:verify',
+    'transactions:sign',
+    'transactions:broadcast',
+  ],
   ADMIN: [...READ_INVENTORY, 'users:read', 'users:manage', 'networks:manage'],
   ANALYST: [
     ...READ_INVENTORY,
     'addresses:manage',
+    'ownership:verify',
     'scans:run',
     'destinations:create',
     'transactions:create',

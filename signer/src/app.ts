@@ -24,6 +24,11 @@ const importBody = z.object({
   derivationPath: z.string().max(100).nullable().optional(),
 })
 const revealBody = z.object({ actor, address: evmAddress, passphrase })
+const signChallengeBody = z.object({
+  actor,
+  address: evmAddress,
+  message: z.string().min(1).max(2000),
+})
 
 export interface SignerAppDeps {
   logger: Logger
@@ -92,6 +97,9 @@ export async function buildSignerApp(deps: SignerAppDeps): Promise<FastifyInstan
   app.post('/vault/keys/import', async (request) => ({
     key: await deps.keys.import(importBody.parse(request.body)),
   }))
+  app.post('/vault/keys/sign-challenge', async (request) =>
+    deps.keys.signChallenge(signChallengeBody.parse(request.body)),
+  )
   // The only response that ever carries key material (ADR-009). no-store is set for all responses.
   app.post('/vault/keys/reveal', async (request) =>
     deps.keys.reveal(revealBody.parse(request.body)),

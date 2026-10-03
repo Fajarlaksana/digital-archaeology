@@ -570,3 +570,81 @@ export const reauthApi = {
   reauth: (password: string, code: string) =>
     apiFetch<void>('/api/auth/reauth', { method: 'POST', body: { password, code } }),
 }
+
+// ─── Ownership verification (Phase 7c) ───
+
+export type AuthorizationType = 'SELF' | 'MANDATE' | 'CONTRACT'
+export type AuthorizationStatus = 'UNVERIFIED' | 'PENDING' | 'VERIFIED' | 'REJECTED' | 'EXPIRED'
+
+export interface PublicAuthorization {
+  id: string
+  address: { id: string; address: string; label: string | null; network: string }
+  type: AuthorizationType
+  reference: string
+  documentName: string | null
+  documentSha256: string | null
+  status: AuthorizationStatus
+  verifiedAt: string | null
+  expiresAt: string | null
+  createdAt: string
+  challenges: Array<{
+    id: string
+    method: 'VAULT' | 'WALLET' | 'MANUAL' | null
+    result: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'EXPIRED'
+    issuedAt: string
+    expiresAt: string
+    usedAt: string | null
+  }>
+}
+
+export interface OwnershipChallenge {
+  id: string
+  address: string
+  message: string
+  expiresAt: string
+}
+
+export interface VerificationResult {
+  result: 'VERIFIED'
+  authorization: PublicAuthorization
+}
+
+export const ownershipApi = {
+  list: (status?: AuthorizationStatus) =>
+    apiFetch<{ authorizations: PublicAuthorization[] }>(
+      `/api/authorizations${status ? `?status=${status}` : ''}`,
+    ).then((r) => r.authorizations),
+  forAddress: (addressId: string) =>
+    apiFetch<{ authorizations: PublicAuthorization[] }>(
+      `/api/addresses/${addressId}/authorizations`,
+    ).then((r) => r.authorizations),
+  create: (
+    addressId: string,
+    input: {
+      type: AuthorizationType
+      reference: string
+      documentSha256: string | null
+      documentName: string | null
+      expiresAt: string | null
+    },
+  ) =>
+    apiFetch<{ authorization: PublicAuthorization }>(`/api/addresses/${addressId}/authorizations`, {
+      method: 'POST',
+      body: input,
+    }).then((r) => r.authorization),
+  challenge: (authorizationId: string) =>
+    apiFetch<{ challenge: OwnershipChallenge }>(
+      `/api/authorizations/${authorizationId}/challenges`,
+      { method: 'POST', body: {} },
+    ).then((r) => r.challenge),
+  submitSignature: (challengeId: string, signature: string, method: 'WALLET' | 'MANUAL') =>
+    apiFetch<VerificationResult>(`/api/challenges/${challengeId}/signature`, {
+      method: 'POST',
+      body: { signature, method },
+    }),
+  vaultSign: (challengeId: string) =>
+    apiFetch<VerificationResult>(`/api/challenges/${challengeId}/vault-signature`, {
+      method: 'POST',
+      body: {},
+    }),
+}

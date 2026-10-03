@@ -23,7 +23,7 @@ Kebutuhan lengkap: `system_analysis_digital_archaeology.md`. Revisi & keputusan:
 
 ## Stack (lihat docs/07-decisions.md)
 
-- Monorepo pnpm: `backend/` (Node.js + TypeScript + Fastify + Prisma + PostgreSQL + Redis/BullMQ + Pino + Zod + Vitest), `frontend/` (React + Vite + TypeScript + React Router + TanStack Query + Tailwind), `shared/` (`@da/shared`: logger dengan redaction + `AppError`/format error, dipakai backend & signer), `signer/` (service internal Key Vault + signing, DB `da_vault` sendiri, tidak terekspos ke internet).
+- Monorepo pnpm: `backend/` (Node.js + TypeScript + Fastify + Prisma + PostgreSQL + Redis/BullMQ + Pino + Zod + Vitest), `frontend/` (React + Vite + TypeScript + React Router + TanStack Query + Tailwind), `shared/` (`@da/shared`: logger dengan redaction + `AppError`/format error + format challenge kepemilikan, dipakai backend & signer), `signer/` (service internal Key Vault + signing, DB `da_vault` sendiri, tidak terekspos ke internet).
 - TypeScript dikunci `~6.0` (typescript-eslint belum mendukung TS 7). Paket workspace di-import sebagai source TS (`exports` → `src/index.ts`), tanpa build step.
 - Selalu pakai `createLogger` dari `@da/shared` dan lempar `AppError(code, ...)`. Jangan pakai `console.*` (lint error).
 - Role: `SUPER_ADMIN, ADMIN, ANALYST, REVIEWER, AUDITOR`. Endpoint memeriksa **permission** (bukan role) lewat `guards.permission('x:y')`. Peta role ke permission ada di `backend/src/auth/permissions.ts`. MFA wajib untuk SUPER_ADMIN/ADMIN/REVIEWER (ADR-012).
@@ -32,6 +32,7 @@ Kebutuhan lengkap: `system_analysis_digital_archaeology.md`. Revisi & keputusan:
 - Address tidak pernah dihapus, hanya diarsipkan (`archived_at`). Query untuk scan atau proses lain wajib mengecualikan address yang diarsipkan.
 - Baca blockchain hanya lewat `ChainReader` (RPC) dan `ActivityProvider` (explorer) dari `chainClients` (`backend/src/chains/clients.ts`). Inaktivitas dihitung dari transaksi KELUAR (ADR-015). Dalam test pakai `tests/integration/fake-chain.ts`, jangan memanggil jaringan sungguhan (kecuali `*.live.test.ts`).
 - Jangan pernah memasukkan URL RPC atau API key ke pesan error atau log.
+- Signer tidak boleh punya endpoint tanda tangan pesan bebas: hanya challenge kepemilikan yang lolos `parseChallengeMessage` (ADR-018). Dokumen otorisasi tidak diunggah, hanya SHA-256-nya.
 - Nilai fiat: hitung hanya dengan `domain/valuation.ts` (decimal.js), simpan sebagai string/NUMERIC, dan tampilkan dengan `formatFiat` (tanpa `Number`). Nilai testnet wajib berlabel SIMULASI dan dijumlahkan terpisah (ADR-016).
 - Export CSV wajib lewat `lib/csv.ts` (proteksi formula injection).
 

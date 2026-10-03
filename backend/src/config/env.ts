@@ -25,6 +25,8 @@ const envSchema = z.object({
   /** Etherscan free tier allows 5 calls/second; stay below it. */
   EXPLORER_RATE_LIMIT_PER_SECOND: z.coerce.number().min(0.5).max(50).default(4),
   INACTIVITY_THRESHOLD_DAYS: z.coerce.number().int().min(1).max(36_500).default(730),
+  /** Lifetime of an ownership-verification challenge (docs/02 §2.4). */
+  CHALLENGE_TTL_MINUTES: z.coerce.number().int().min(1).max(60).default(15),
 
   // --- Valuation & scheduler (Phase 6) ---
   FIAT_CURRENCY: z.enum(['USD', 'IDR']).default('USD'),

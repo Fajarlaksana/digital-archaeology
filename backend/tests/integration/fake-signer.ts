@@ -1,5 +1,5 @@
 import { mnemonicToAccount, privateKeyToAccount } from 'viem/accounts'
-import { AppError } from '@da/shared'
+import { AppError, parseChallengeMessage } from '@da/shared'
 import type { SignerClient, SignerKey, VaultStatus } from '../../src/signer/client'
 
 /**
@@ -118,6 +118,25 @@ export function createFakeSigner() {
       const key = keys.get(input.address.toLowerCase())
       if (!key) throw new AppError('NOT_FOUND', 'No key for this address in the vault')
       return { privateKey: key.secret }
+    },
+    async signChallenge(input) {
+      guard('signChallenge')
+      requireInit()
+      if (!unlockedBy) throw new AppError('VAULT_LOCKED', 'The vault is locked')
+      if (!parseChallengeMessage(input.message)) {
+        throw new AppError(
+          'VALIDATION_ERROR',
+          'Only ownership-verification challenges can be signed',
+        )
+      }
+      const key = keys.get(input.address.toLowerCase())
+      if (!key || !key.secret.startsWith('0x') || key.secret.length !== 66) {
+        throw new AppError('NOT_FOUND', 'No key for this address in the vault')
+      }
+      const signature = await privateKeyToAccount(key.secret as `0x${string}`).signMessage({
+        message: input.message,
+      })
+      return { signature }
     },
   }
 

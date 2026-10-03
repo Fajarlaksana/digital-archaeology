@@ -1,4 +1,6 @@
-import { AppError, type Logger } from '@da/shared'
+import { createHash } from 'node:crypto'
+import { privateKeyToAccount } from 'viem/accounts'
+import { AppError, parseChallengeMessage, type Logger } from '@da/shared'
 import { open, seal, wipe } from '../crypto/aead'
 import type { VaultDatabase, VaultRepository } from '../vault/vault.repository'
 import type { VaultService } from '../vault/vault.service'
@@ -119,6 +121,67 @@ export function createKeyService(deps: KeyServiceDeps) {
       } finally {
         wipe(derived.privateKey)
       }
+    },
+
+    /**
+     * Signs an ownership challenge with the stored key (EIP-191 personal_sign).
+     * Refuses ANY other message: even a compromised backend cannot make the signer sign
+     * logins, permits or arbitrary text (ADR-018). Requires the vault to be unlocked.
+     */
+    async signChallenge(input: {
+      actor: string
+      address: string
+      message: string
+    }): Promise<{ signature: string }> {
+      const challenge = parseChallengeMessage(input.message)
+      if (!challenge) {
+        throw new AppError(
+          'VALIDATION_ERROR',
+          'Only ownership-verification challenges can be signed',
+        )
+      }
+      const address = input.address.toLowerCase()
+      if (challenge.address.toLowerCase() !== address) {
+        throw new AppError('VALIDATION_ERROR', 'The challenge is for a different address')
+      }
+      if (challenge.expiresAt.getTime() <= now()) {
+        throw new AppError('VALIDATION_ERROR', 'The challenge has expired')
+      }
+      const row = await db.vaultKey.findUnique({
+        where: { chainType_address: { chainType: CHAIN, address } },
+      })
+      if (!row) throw new AppError('NOT_FOUND', 'No key for this address in the vault')
+
+      const signature = await vault.withMasterKey(async (masterKey) => {
+        const plain = open(
+          masterKey,
+          {
+            iv: Buffer.from(row.iv),
+            tag: Buffer.from(row.authTag),
+            ciphertext: Buffer.from(row.ciphertext),
+          },
+          keyAad(CHAIN, address),
+        )
+        try {
+          // viem needs the key as a hex string (cannot be wiped; ADR-017 limitation).
+          return await privateKeyToAccount(`0x${plain.toString('hex')}`).signMessage({
+            message: input.message,
+          })
+        } finally {
+          wipe(plain)
+        }
+      })
+      await db.vaultKey.update({ where: { id: row.id }, data: { lastUsedAt: new Date(now()) } })
+      await repo.event('MESSAGE_SIGNED', {
+        actor: input.actor,
+        address,
+        metadata: {
+          kind: 'OWNERSHIP_CHALLENGE',
+          authorizationId: challenge.authorizationId,
+          messageSha256: createHash('sha256').update(input.message).digest('hex'),
+        },
+      })
+      return { signature }
     },
 
     /**

@@ -1,3 +1,4 @@
+export * from './challenge'
 export * from './errors'
 export * from './hmac'
 export * from './logger'

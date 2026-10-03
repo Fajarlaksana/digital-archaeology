@@ -5,6 +5,7 @@ import { useAuth } from '../auth/useAuth'
 import { Badge, Button, ErrorMessage, Field } from '../components/ui'
 import { addressesApi, formatFiat, scansApi, type PublicAddress } from '../services/api'
 import { ADDRESSES_KEY, ActivityBadge } from './AddressesPage'
+import { OwnershipSection } from './OwnershipSection'
 
 export function AddressDetailPage() {
   const { id = '' } = useParams()
@@ -145,6 +146,7 @@ function Detail({ address: a, canManage }: { address: PublicAddress; canManage: 
         <ErrorMessage error={archive.error} />
       </section>
 
+      <OwnershipSection addressId={a.id} archived={a.archivedAt !== null} />
       <BalancesSection addressId={a.id} />
       <HistorySection addressId={a.id} />
     </>

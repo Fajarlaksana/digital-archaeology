@@ -6,6 +6,7 @@ import { Layout } from './components/Layout'
 import { NAV_ITEMS, type NavItem } from './navigation'
 import { AddressDetailPage } from './pages/AddressDetailPage'
 import { AddressesPage } from './pages/AddressesPage'
+import { AuthorizationsPage } from './pages/AuthorizationsPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { KeyVaultPage } from './pages/KeyVaultPage'
 import { LoginPage } from './pages/LoginPage'
@@ -22,6 +23,7 @@ const PAGES: Record<string, () => React.JSX.Element> = {
   '/addresses': AddressesPage,
   '/scans': ScansPage,
   '/key-vault': KeyVaultPage,
+  '/authorizations': AuthorizationsPage,
 }
 
 /** Direct URL access to a page the user may not see sends them home (the API denies it anyway). */

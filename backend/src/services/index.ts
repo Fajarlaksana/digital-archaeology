@@ -6,6 +6,7 @@ import type { PriceProvider } from '../pricing/coingecko'
 import type { SignerClient } from '../signer/client'
 import { createAddressRepository } from '../repositories/address.repository'
 import { createAuditLogRepository } from '../repositories/audit-log.repository'
+import { createAuthorizationRepository } from '../repositories/authorization.repository'
 import { createNetworkRepository } from '../repositories/network.repository'
 import { createPriceRepository } from '../repositories/price.repository'
 import { createScanRepository } from '../repositories/scan.repository'
@@ -16,6 +17,7 @@ import { createAuthService } from './auth.service'
 import { createChainHealth } from './chain-health'
 import { createDashboardService, type ScheduleInfo } from './dashboard.service'
 import { createNetworkService } from './network.service'
+import { createOwnershipService } from './ownership.service'
 import { createReportService } from './report.service'
 import { createScanService } from './scan.service'
 import { createUserService } from './user.service'
@@ -43,6 +45,8 @@ export interface ServiceConfig {
   scheduleInfo?: () => Promise<ScheduleInfo | null>
   /** Phase 7: the internal signer (HTTP + HMAC in the server, in-memory fake in tests). */
   signer: SignerClient
+  /** Ownership challenge lifetime (default 15 min). */
+  challengeTtlMs?: number
 }
 
 /** Wires repositories and services. The single place where the dependency graph is built. */
@@ -102,6 +106,14 @@ export function createServices(db: Database, config: ServiceConfig) {
     }),
     reports: createReportService({ db, audit, fiatCurrency }),
     vault: createVaultService({ signer: config.signer, addresses, audit, logger: config.logger }),
+    ownership: createOwnershipService({
+      authorizations: createAuthorizationRepository(db),
+      signer: config.signer,
+      audit,
+      logger: config.logger,
+      challengeTtlMs: config.challengeTtlMs ?? 15 * 60_000,
+      now,
+    }),
     checkRpc: createChainHealth({ networks, clientsFor: config.clientsFor }),
   }
 }

@@ -212,15 +212,35 @@ Bagian **Pengaturan passphrase**:
 | The signer service is not reachable | Service signer mati atau tidak dikonfigurasi. Hubungi pengelola server |
 | Reveal limit reached | Sudah 3 kali dalam satu jam, tunggu |
 
-## 9. Verifikasi kepemilikan · *Fase 7*
+## 9. Verifikasi kepemilikan · *Fase 7* ✅ · ANALYST / SUPER_ADMIN (lihat: semua role)
 
-1. Buka **Address Detail**, lalu **Authorizations**, lalu **Tambah Otorisasi**.
-2. Pilih tipe (Milik sendiri / Mandat / Kontrak), lalu unggah atau rujuk dokumen.
-3. Klik **Buat Challenge**. Sistem menampilkan pesan yang berlaku 15 menit.
-4. Tandatangani pesan:
-   - **Key ada di vault** (SUPER_ADMIN, vault unlocked): klik **Verify with Vault**.
-   - **Key tidak di vault:** **Connect Wallet**, lalu **Sign**, atau tanda tangani di perangkat offline lalu tempel signature-nya.
-5. Hasilnya **VERIFIED** (berhasil), **REJECTED** (signature tidak cocok), atau **EXPIRED** (buat challenge baru).
+Verifikasi punya dua bagian: **otorisasi** (dasar hukum Anda memegang address ini) dan **bukti kendali** (tanda tangan atas pesan challenge sekali pakai).
+
+### 9.1 Menambah otorisasi
+
+1. Buka **Addresses**, pilih address, lalu di bagian **Otorisasi & verifikasi kepemilikan** klik **Tambah otorisasi**.
+2. Pilih jenis: **Milik sendiri**, **Kuasa / mandat**, atau **Kontrak**, lalu isi **Referensi** (mis. nomor surat kuasa).
+3. Opsional: pilih **Dokumen pendukung**. File **tidak diunggah**; browser hanya menghitung sidik jari SHA-256-nya dan mengirim sidik jari + nama file. Simpan dokumen aslinya di tempat aman. Kelak keasliannya bisa dicek dengan mencocokkan SHA-256 file tersebut.
+4. Opsional: isi **Berlaku sampai**. Setelah tanggal itu otorisasi berstatus **EXPIRED** dan tidak bisa dipakai verifikasi.
+5. Klik **Simpan otorisasi**. Status otorisasi menjadi **PENDING**, dan status otorisasi address menjadi PENDING (kecuali sudah VERIFIED).
+
+Address yang diarsipkan tidak bisa diberi otorisasi baru; pulihkan dulu.
+
+### 9.2 Membuktikan kendali (challenge)
+
+1. Pada otorisasi, klik **Buat challenge verifikasi**. Sistem menampilkan pesan berisi address, network, nonce acak, dan waktu kedaluwarsa (default 15 menit).
+2. Tanda tangani pesan itu dengan salah satu cara:
+   - **Tanda tangani dengan wallet browser** (muncul jika ada MetaMask atau sejenisnya): akun aktif di wallet **harus** address yang diverifikasi.
+   - **Tempel signature**: tanda tangani pesan persis apa adanya di wallet lain/perangkat offline (`personal_sign` / "Sign message"), lalu tempel hasilnya (`0x…`, 132 karakter) dan klik **Kirim signature**.
+   - **Tanda tangani dengan Key Vault** (hanya SUPER_ADMIN, key address sudah di-import dan vault terbuka): sistem meminta konfirmasi password + kode authenticator bila konfirmasi terakhir lebih dari 5 menit lalu.
+3. Hasil:
+   - **VERIFIED**: otorisasi dan address berstatus terverifikasi.
+   - **REJECTED** (*The signature was not made by this address…*): signature bukan dari address ini atau bukan untuk pesan ini. Otorisasi tetap PENDING. Buat challenge baru.
+   - **Challenge sudah dipakai / kedaluwarsa**: setiap challenge hanya bisa dicoba **sekali**. Buat challenge baru.
+
+Halaman **Authorizations** menampilkan semua otorisasi dengan filter status; klik address untuk membuka detailnya.
+
+> Verifikasi hanya untuk wallet biasa (EOA). Smart-contract wallet (mis. Safe) belum didukung.
 
 > Private key/seed hanya boleh dimasukkan di menu **Key Vault → Import key** oleh SUPER_ADMIN. Halaman lain atau orang lain yang meminta key **bukan** bagian dari prosedur sistem ini.
 

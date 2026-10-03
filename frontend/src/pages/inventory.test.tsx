@@ -220,6 +220,7 @@ describe('Address detail', () => {
       [`GET /api/addresses/${ADDRESS.id}`]: () => json(200, { address: ADDRESS }),
       [`GET /api/addresses/${ADDRESS.id}/balances`]: () => json(200, { balances: [] }),
       [`GET /api/addresses/${ADDRESS.id}/activity`]: () => json(200, { history: [] }),
+      [`GET /api/addresses/${ADDRESS.id}/authorizations`]: () => json(200, { authorizations: [] }),
     })
     renderAt(`/addresses/${ADDRESS.id}`)
     expect(await screen.findByRole('heading', { name: ADDRESS.address })).toBeTruthy()
