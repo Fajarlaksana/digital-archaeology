@@ -90,6 +90,49 @@ describe.skipIf(!testDatabaseUrl)('key vault API', () => {
       expect(res.headers['cache-control']).toBe('no-store')
     })
 
+    // Every vault route, incl. the ownership vault path (CLAUDE.md: role x endpoint matrix).
+    const VAULT_ROUTES: Array<[string, string, object | undefined]> = [
+      ['GET', '/api/vault/status', undefined],
+      ['GET', '/api/vault/keys', undefined],
+      ['POST', '/api/vault/init', { passphrase: VAULT_PASSPHRASE, recoveryPassphrase: RECOVERY }],
+      ['POST', '/api/vault/unlock', { passphrase: VAULT_PASSPHRASE }],
+      ['POST', '/api/vault/lock', {}],
+      [
+        'POST',
+        '/api/vault/passphrase',
+        { currentPassphrase: VAULT_PASSPHRASE, newPassphrase: RECOVERY },
+      ],
+      ['POST', '/api/vault/recover', { recoveryPassphrase: RECOVERY, newPassphrase: RECOVERY }],
+      [
+        'POST',
+        '/api/vault/keys',
+        { addressId: randomUUID(), secretType: 'PRIVATE_KEY', secret: TEST_KEY },
+      ],
+      [
+        'POST',
+        '/api/vault/keys/reveal',
+        { addressId: randomUUID(), passphrase: VAULT_PASSPHRASE, code: '123456' },
+      ],
+      ['POST', `/api/challenges/${randomUUID()}/vault-signature`, {}],
+    ]
+
+    it.each(['ADMIN', 'ANALYST', 'REVIEWER', 'AUDITOR'] as const)(
+      '%s gets 403 on every vault route and never reaches the signer',
+      async (role) => {
+        h = await createHarness(db)
+        const { token } = await tokenFor(role)
+        for (const [method, url, body] of VAULT_ROUTES) {
+          const res = await h.call(method as 'GET' | 'POST', url, token, body)
+          expect({ route: `${method} ${url}`, status: res.statusCode }).toEqual({
+            route: `${method} ${url}`,
+            status: 403,
+          })
+          expect(res.json().error.code).toBe('FORBIDDEN')
+        }
+        expect(h.signer.calls).toEqual([])
+      },
+    )
+
     it('rejects anonymous requests and non-SUPER_ADMIN imports', async () => {
       h = await createHarness(db)
       expect((await h.call('GET', '/api/vault/keys')).statusCode).toBe(401)

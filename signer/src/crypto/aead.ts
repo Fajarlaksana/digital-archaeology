@@ -37,7 +37,16 @@ export function open(key: Buffer, sealed: Sealed, aad: string): Buffer {
   const decipher = createDecipheriv('aes-256-gcm', key, sealed.iv)
   decipher.setAAD(Buffer.from(aad, 'utf8'))
   decipher.setAuthTag(sealed.tag)
-  return Buffer.concat([decipher.update(sealed.ciphertext), decipher.final()])
+  // update() already returns the (not yet authenticated) plaintext; final() verifies the tag.
+  // Both intermediates are wiped, also on failure, so only the returned copy holds the secret.
+  const parts: Buffer[] = []
+  try {
+    parts.push(decipher.update(sealed.ciphertext))
+    parts.push(decipher.final())
+    return Buffer.concat(parts)
+  } finally {
+    wipe(...parts)
+  }
 }
 
 /** iv | tag | ciphertext, for single-column storage (wrapped master key). */

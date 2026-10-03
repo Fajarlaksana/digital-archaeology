@@ -159,7 +159,7 @@ M4 Production     : F12 → F13 → F14
 **Tujuan:** service `signer/` berdiri, key bisa disimpan aman, dan kepemilikan terbukti. Fase ini dikerjakan lebih awal dari signing transaksi karena verifikasi kepemilikan sudah butuh vault.
 
 **7a — Key Vault (service `signer/`)**
-> Dikerjakan dalam sesi: **7a** fondasi signer ✅ · **7b** import/reveal/UI ✅ · **7c** ownership verification ✅ · **7d** review keamanan.
+> Dikerjakan dalam sesi: **7a** fondasi signer ✅ · **7b** import/reveal/UI ✅ · **7c** ownership verification ✅ · **7d** review keamanan ✅.
 
 - [x] Package `signer/`: Fastify internal, **hanya loopback** (`SIGNER_ALLOW_NON_LOOPBACK` untuk override eksplisit), autentikasi HMAC-SHA256 (timestamp ±60 dtk, hash body, constant-time, anti-replay); hanya `GET /health` tanpa signature
 - [x] DB `da_vault` (Prisma schema terpisah, user DB terpisah): `vault_config` (singleton, CHECK), `vault_keys` (CHECK panjang IV/tag, address lower-case), `vault_events` (append-only trigger)
@@ -180,6 +180,17 @@ M4 Production     : F12 → F13 → F14
 - [x] Challenge sekali pakai (dikonsumsi atomik sebelum dievaluasi), kedaluwarsa → `EXPIRED`, signature salah → `REJECTED`; otorisasi yang lewat masa berlaku tidak bisa diverifikasi
 - [x] Audit log setiap langkah (`AUTHORIZATION_CREATED`, `OWNERSHIP_CHALLENGE_CREATED`, `OWNERSHIP_VERIFIED/REJECTED/CHALLENGE_EXPIRED`), permission baru `ownership:verify` (ANALYST, SUPER_ADMIN)
 - [x] UI: bagian **Otorisasi & verifikasi kepemilikan** di Address Detail + halaman **Authorizations** (daftar + filter status)
+
+**7d — Review keamanan** (ADR-019; setiap perbaikan punya test regresi yang gagal pada kode lama)
+- [x] Review menyeluruh signer + endpoint vault: kebocoran key/passphrase/MK, TTL, permission/MFA, akses tanpa HMAC
+- [x] Operasi passphrase di signer berjalan satu per satu: throttle 5 salah/15 menit tidak bisa ditembus request paralel, dan paling banyak satu Argon2id (64 MiB) berjalan sekaligus
+- [x] Bungkus ulang master key (ganti passphrase / recovery) memakai parameter KDF yang tersimpan, bukan default terbaru
+- [x] Batas reveal 3/jam memesan slot sebelum `await` (tahan request paralel; percobaan gagal tidak memakai kuota)
+- [x] `aead.open` menghapus plaintext perantara (juga saat tag gagal); import seed menghapus seed BIP-39 dan setiap node HD
+- [x] Backend menolak `SIGNER_URL` http ke host non-loopback (kecuali `SIGNER_ALLOW_INSECURE_HTTP=true`, dengan warning saat start)
+- [x] Reveal setelah konfirmasi ulang meminta kode TOTP baru (tidak retry dengan kode yang sudah terpakai); panel konfirmasi tidak lagi ikut men-submit form induk
+- [x] Matriks test role × semua endpoint vault (termasuk jalur vault ownership): 403 dan signer tidak dipanggil
+- [ ] Jalankan `/security-review` (oleh pemilik projek, dari terminal)
 
 **DoD:**
 - Signature valid menghasilkan `VERIFIED`, sedangkan signature dari address lain, challenge kedaluwarsa, dan replay semuanya ditolak (ada test untuk masing-masing).
@@ -285,6 +296,7 @@ M4 Production     : F12 → F13 → F14
 | 2026-10-01 | F0 | ADR-001/002/004–007 Accepted: TypeScript stack, EVM Sepolia, internal use, >3 operator |
 | 2026-10-01 | F1 | Monorepo + shared/backend/frontend, 49 test hijau. Pending: verifikasi Docker (Docker Desktop gagal start) |
 | 2026-10-02 | F1 | Docker Desktop (Hyper-V) hidup: `docker compose up -d` terverifikasi (port 5434), dev DB pindah ke Docker (ADR-013) |
+| 2026-10-04 | F7d | Review keamanan Fase 7: 8 temuan diperbaiki (throttle paralel, KDF tersimpan, kuota reveal, wipe buffer, SIGNER_URL loopback, reveal setelah re-auth, nested form, matriks role) + bug nested form; 512 test hijau |
 | 2026-10-03 | F7c | Ownership verification: otorisasi + hash dokumen di browser, challenge sekali pakai, verifikasi via vault / wallet browser / tempel signature; 498 test hijau |
 | 2026-10-03 | F7b | Import/reveal/UI vault, endpoint backend + client HMAC, lock saat logout; uji E2E sungguhan backend→signer (DB sekali pakai) lulus; 458 test hijau |
 | 2026-10-03 | F7a | Service signer: kriptografi vault (Argon2id + AES-256-GCM + AAD), unlock/lock/TTL, ganti passphrase & recovery, HMAC + anti-replay, loopback-only; 39 test signer, total 416 hijau |

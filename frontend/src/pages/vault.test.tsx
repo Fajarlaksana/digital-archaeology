@@ -201,6 +201,102 @@ describe('Key Vault page', () => {
     expect((within(form).getByLabelText('Private key (hex)') as HTMLInputElement).value).toBe('')
   })
 
+  it('retries an import exactly once after re-authentication (no nested-form double submit)', async () => {
+    let attempts = 0
+    backend({
+      'GET /api/vault/status': () =>
+        json(
+          200,
+          status({ unlocked: true, expiresAt: new Date(Date.now() + 600_000).toISOString() }),
+        ),
+      'GET /api/addresses*': () =>
+        json(200, {
+          items: [
+            {
+              id: ADDRESS_ID,
+              address: KEY.checksumAddress,
+              label: 'Old wallet',
+              network: { id: 'n1', name: 'sepolia', displayName: 'Sepolia' },
+            },
+          ],
+          total: 1,
+          page: 1,
+          pageSize: 200,
+        }),
+      'POST /api/vault/keys': () =>
+        ++attempts === 1
+          ? json(403, { error: { code: 'REAUTH_REQUIRED', message: 'Please confirm' } })
+          : json(201, { key: KEY }),
+      'POST /api/auth/reauth': () => new Response(null, { status: 204 }),
+    })
+    renderAt('/key-vault')
+    const form = await screen.findByRole('form', { name: 'Import key' })
+    await waitFor(() =>
+      expect(within(form).getByRole('option', { name: /Old wallet/ })).toBeTruthy(),
+    )
+    fireEvent.change(within(form).getByLabelText('Private key (hex)'), {
+      target: { value: TEST_KEY },
+    })
+    fireEvent.click(within(form).getByRole('button', { name: 'Import' }))
+    const panel = await screen.findByRole('form', { name: 'Konfirmasi identitas' })
+    fireEvent.change(within(panel).getByLabelText('Password akun'), {
+      target: { value: 'correct horse battery' },
+    })
+    fireEvent.change(within(panel).getByLabelText('Kode authenticator'), {
+      target: { value: '123456' },
+    })
+    fireEvent.click(within(panel).getByRole('button', { name: 'Konfirmasi' }))
+
+    expect(await within(form).findByRole('status')).toBeTruthy()
+    expect(attempts).toBe(2) // refused once, retried once — the confirm did not resubmit the form
+  })
+
+  it('after re-authentication, asks for a NEW code instead of retrying the reveal', async () => {
+    const revealBodies: unknown[] = []
+    backend({
+      'GET /api/vault/status': () => json(200, status()),
+      'GET /api/vault/keys': () => json(200, { keys: [KEY] }),
+      'POST /api/vault/keys/reveal': (body) => {
+        revealBodies.push(body)
+        return revealBodies.length === 1
+          ? json(403, { error: { code: 'REAUTH_REQUIRED', message: 'Please confirm' } })
+          : json(200, { privateKey: TEST_KEY })
+      },
+      'POST /api/auth/reauth': () => new Response(null, { status: 204 }),
+    })
+    renderAt('/key-vault')
+    fireEvent.click(await screen.findByRole('button', { name: 'Tampilkan key' }))
+    const dialog = screen.getByRole('dialog', { name: 'Tampilkan private key' })
+    fireEvent.change(within(dialog).getByLabelText('Passphrase vault'), {
+      target: { value: 'marble orbit cactus lantern' },
+    })
+    const code = within(dialog).getByLabelText('Kode authenticator') as HTMLInputElement
+    fireEvent.change(code, { target: { value: '111111' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Tampilkan' }))
+
+    const panel = await within(dialog).findByRole('form', { name: 'Konfirmasi identitas' })
+    fireEvent.change(within(panel).getByLabelText('Password akun'), {
+      target: { value: 'correct horse battery' },
+    })
+    fireEvent.change(within(panel).getByLabelText('Kode authenticator'), {
+      target: { value: '111111' },
+    })
+    fireEvent.click(within(panel).getByRole('button', { name: 'Konfirmasi' }))
+
+    expect((await within(dialog).findByRole('status')).textContent).toMatch(/kode authenticator/)
+    expect(revealBodies).toHaveLength(1) // no automatic retry with the used-up code
+    expect(code.value).toBe('')
+
+    fireEvent.change(code, { target: { value: '222222' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Tampilkan' }))
+    expect(await within(dialog).findByLabelText('Private key')).toBeTruthy()
+    expect(revealBodies[1]).toEqual({
+      addressId: ADDRESS_ID,
+      passphrase: 'marble orbit cactus lantern',
+      code: '222222',
+    })
+  })
+
   it('reveals a key masked by default and closes itself after 60 seconds', async () => {
     // Fake timers from the start (the countdown interval must be created under them); real time still flows.
     vi.useFakeTimers({ shouldAdvanceTime: true })

@@ -341,6 +341,32 @@ describe.skipIf(!testDatabaseUrl)('vault keys (signer)', () => {
       ).resolves.toBeDefined()
     })
 
+    it('keeps the limit under parallel requests, and failed attempts do not use it up', async () => {
+      await setup()
+      await keys.import({
+        actor: ACTOR,
+        expectedAddress: ACCOUNT_0.address,
+        secretType: 'PRIVATE_KEY',
+        secret: ACCOUNT_0_KEY,
+      })
+      await expect(
+        keys.reveal({ actor: ACTOR, address: ACCOUNT_0.address, passphrase: 'wrong passphrase!!' }),
+      ).rejects.toMatchObject({ code: 'PASSPHRASE_INVALID' })
+      const before = await db.vaultEvent.count({ where: { type: 'KEY_REVEALED' } })
+      const results = await Promise.allSettled(
+        Array.from({ length: 6 }, () =>
+          keys.reveal({ actor: ACTOR, address: ACCOUNT_0.address, passphrase: PASSPHRASE }),
+        ),
+      )
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(3)
+      expect(
+        results.filter(
+          (r) => r.status === 'rejected' && (r.reason as { code: string }).code === 'RATE_LIMITED',
+        ),
+      ).toHaveLength(3)
+      expect(await db.vaultEvent.count({ where: { type: 'KEY_REVEALED' } })).toBe(before + 3)
+    })
+
     it('can be switched off entirely (KEY_REVEAL_ENABLED=false)', async () => {
       await setup({ revealEnabled: false })
       await keys.import({

@@ -1,6 +1,6 @@
 import { createLogger } from '@da/shared'
 import { buildApp } from './app'
-import { loadEnvFile, parseEnv, type Env } from './config/env'
+import { isLoopbackHost, loadEnvFile, parseEnv, type Env } from './config/env'
 import { checkDatabase, createPrismaClient } from './lib/prisma'
 import { createChainClientFactory } from './chains/clients'
 import { createMaintenanceQueue } from './jobs/maintenance-queue'
@@ -59,6 +59,14 @@ const app = await buildApp({ env, logger, checkDatabase: () => checkDatabase(db)
 
 if (env.NETWORK_MODE === 'mainnet') {
   logger.warn('NETWORK_MODE=mainnet — real assets are at stake')
+}
+const signerUrl = new URL(env.SIGNER_URL)
+if (signerUrl.protocol === 'http:' && !isLoopbackHost(signerUrl.hostname)) {
+  // Only reachable with SIGNER_ALLOW_INSECURE_HTTP=true. Host only: never log the full URL.
+  logger.warn(
+    { signerHost: signerUrl.hostname },
+    'SIGNER_INSECURE_HTTP — vault passphrases travel unencrypted to the signer',
+  )
 }
 
 async function shutdown(signal: string): Promise<void> {

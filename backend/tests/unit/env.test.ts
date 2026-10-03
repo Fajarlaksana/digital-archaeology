@@ -53,6 +53,25 @@ describe('parseEnv', () => {
     expect(() => parseEnv({ ...VALID, MFA_ENCRYPTION_KEY: short })).toThrow(/MFA_ENCRYPTION_KEY/)
   })
 
+  it('allows plain http to the signer only on loopback', () => {
+    expect(parseEnv(VALID).SIGNER_URL).toBe('http://127.0.0.1:4000')
+    for (const url of ['http://localhost:4000', 'http://[::1]:4000', 'http://127.0.0.2:4000']) {
+      expect(parseEnv({ ...VALID, SIGNER_URL: url }).SIGNER_URL).toBe(url)
+    }
+    expect(() => parseEnv({ ...VALID, SIGNER_URL: 'http://signer:4000' })).toThrow(/SIGNER_URL/)
+    expect(() => parseEnv({ ...VALID, SIGNER_URL: 'http://10.0.0.5:4000' })).toThrow(/SIGNER_URL/)
+    expect(() => parseEnv({ ...VALID, SIGNER_URL: 'http://127.0.0.1.evil.example:4000' })).toThrow(
+      /SIGNER_URL/,
+    )
+    expect(parseEnv({ ...VALID, SIGNER_URL: 'https://signer.internal:4443' }).SIGNER_URL).toBe(
+      'https://signer.internal:4443',
+    )
+    expect(
+      parseEnv({ ...VALID, SIGNER_URL: 'http://signer:4000', SIGNER_ALLOW_INSECURE_HTTP: 'true' })
+        .SIGNER_URL,
+    ).toBe('http://signer:4000')
+  })
+
   it('applies session defaults', () => {
     expect(parseEnv(VALID)).toMatchObject({ SESSION_TTL_HOURS: 12, SESSION_IDLE_MINUTES: 30 })
   })

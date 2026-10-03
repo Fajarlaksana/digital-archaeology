@@ -182,6 +182,24 @@ describe.skipIf(!testDatabaseUrl)('key vault (signer)', () => {
       })
     })
 
+    it('cannot be bypassed with parallel requests: attempts are evaluated one at a time', async () => {
+      await initialised()
+      const attacker = randomUUID()
+      const results = await Promise.allSettled(
+        Array.from({ length: 12 }, (_, i) =>
+          vault.unlock({ passphrase: `parallel wrong guess ${i}`, actor: attacker }),
+        ),
+      )
+      const codes = results.map((r) =>
+        r.status === 'rejected' ? (r.reason as { code: string }).code : 'UNLOCKED',
+      )
+      expect(codes.filter((c) => c === 'PASSPHRASE_INVALID')).toHaveLength(5)
+      expect(codes.filter((c) => c === 'RATE_LIMITED')).toHaveLength(7)
+      expect(await db.vaultEvent.count({ where: { type: 'UNLOCK_FAILED', actor: attacker } })).toBe(
+        5,
+      )
+    })
+
     it('auto-locks after the TTL and records AUTO_LOCK', async () => {
       await freshVault(10 * 60_000)
       await vault.init({ passphrase: PASSPHRASE, recoveryPassphrase: RECOVERY, actor: ACTOR })
@@ -246,6 +264,43 @@ describe.skipIf(!testDatabaseUrl)('key vault (signer)', () => {
       ).map((e) => e.type)
       expect(types).toContain('RECOVERED')
       expect(types).toContain('UNLOCK')
+    })
+  })
+
+  describe('KDF parameters', () => {
+    it('re-wraps with the STORED parameters, so raising the defaults later never locks the vault out', async () => {
+      await initialised() // stored parameters: FAST_KDF
+      const upgraded = createVaultService({
+        repo: createVaultRepository(db),
+        logger: createLogger({ name: 'signer-test', level: 'silent' }),
+        unlockTtlMs: 60_000,
+        kdf: { memoryCost: 8192, timeCost: 2, parallelism: 1 }, // new defaults in a later release
+        now: () => clock,
+      })
+      try {
+        const changed = 'copper meadow signal falcon'
+        await upgraded.changePassphrase({
+          currentPassphrase: PASSPHRASE,
+          newPassphrase: changed,
+          actor: ACTOR,
+        })
+        await expect(upgraded.unlock({ passphrase: changed, actor: ACTOR })).resolves.toMatchObject(
+          { unlocked: true },
+        )
+        const recovered = 'granite willow comet saddle'
+        await upgraded.recover({
+          recoveryPassphrase: RECOVERY,
+          newPassphrase: recovered,
+          actor: ACTOR,
+        })
+        await expect(
+          upgraded.unlock({ passphrase: recovered, actor: ACTOR }),
+        ).resolves.toMatchObject({ unlocked: true })
+        const config = await db.vaultConfig.findUniqueOrThrow({ where: { id: 1 } })
+        expect(config).toMatchObject({ kdfMemoryCost: FAST_KDF.memoryCost, kdfTimeCost: 1 })
+      } finally {
+        upgraded.shutdown()
+      }
     })
   })
 

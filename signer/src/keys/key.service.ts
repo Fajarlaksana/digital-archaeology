@@ -199,29 +199,39 @@ export function createKeyService(deps: KeyServiceDeps) {
       if (reveals.length >= MAX_REVEALS_PER_HOUR) {
         throw new AppError('RATE_LIMITED', 'Reveal limit reached (3 per hour)')
       }
+      // Reserve the slot BEFORE any await, so parallel requests cannot all pass the check.
+      // It is released again only when nothing was revealed.
+      const slot = now()
+      reveals.push(slot)
       const address = input.address.toLowerCase()
-      const row = await db.vaultKey.findUnique({
-        where: { chainType_address: { chainType: CHAIN, address } },
-      })
-      if (!row) throw new AppError('NOT_FOUND', 'No key for this address in the vault')
+      let privateKey: string
+      try {
+        const row = await db.vaultKey.findUnique({
+          where: { chainType_address: { chainType: CHAIN, address } },
+        })
+        if (!row) throw new AppError('NOT_FOUND', 'No key for this address in the vault')
 
-      const privateKey = await vault.withPassphrase(input.passphrase, input.actor, (masterKey) => {
-        const plain = open(
-          masterKey,
-          {
-            iv: Buffer.from(row.iv),
-            tag: Buffer.from(row.authTag),
-            ciphertext: Buffer.from(row.ciphertext),
-          },
-          keyAad(CHAIN, address),
-        )
-        try {
-          return `0x${plain.toString('hex')}`
-        } finally {
-          wipe(plain)
-        }
-      })
-      reveals.push(now())
+        privateKey = await vault.withPassphrase(input.passphrase, input.actor, (masterKey) => {
+          const plain = open(
+            masterKey,
+            {
+              iv: Buffer.from(row.iv),
+              tag: Buffer.from(row.authTag),
+              ciphertext: Buffer.from(row.ciphertext),
+            },
+            keyAad(CHAIN, address),
+          )
+          try {
+            return `0x${plain.toString('hex')}`
+          } finally {
+            wipe(plain)
+          }
+        })
+      } catch (error) {
+        const index = reveals.indexOf(slot)
+        if (index !== -1) reveals.splice(index, 1)
+        throw error
+      }
       await repo.event('KEY_REVEALED', { actor: input.actor, address })
       logger.warn({ address }, 'KEY_REVEALED')
       return { privateKey }

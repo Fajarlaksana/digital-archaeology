@@ -215,7 +215,8 @@ FEE_MARGIN_PERCENT=20
 CHALLENGE_TTL_MINUTES=15
 CONFIRMATIONS_REQUIRED=3
 DOCUMENT_ENCRYPTION_KEY=
-SIGNER_URL=http://127.0.0.1:4000     # backend → signer (internal)
+SIGNER_URL=http://127.0.0.1:4000     # backend → signer (internal); http hanya ke loopback, selain itu https
+SIGNER_ALLOW_INSECURE_HTTP=false     # opt-out eksplisit untuk jaringan container privat (warning saat start)
 SIGNER_HMAC_SECRET=                  # sama di backend & signer
 
 # --- hanya di env service signer/ ---

@@ -415,6 +415,7 @@ function RevealDialog({ vaultKey, onClose }: { vaultKey: VaultKey; onClose: () =
   const [revealed, setRevealed] = useState<string | null>(null)
   const [visible, setVisible] = useState(false)
   const [secondsLeft, setSecondsLeft] = useState(REVEAL_SECONDS)
+  const [notice, setNotice] = useState<string | null>(null)
 
   // Latest onClose without making it an effect dependency: a parent re-render must NOT
   // restart the 60-second timer (that would keep the key on screen longer).
@@ -458,17 +459,30 @@ function RevealDialog({ vaultKey, onClose }: { vaultKey: VaultKey; onClose: () =
           className="space-y-3"
           onSubmit={(e) => {
             e.preventDefault()
-            void sensitive.run(async () => {
-              const result = await vaultApi.reveal(
-                vaultKey.inventory[0]!.addressId,
-                passphrase,
-                code,
-              )
-              setPassphrase('')
-              setCode('')
-              setSecondsLeft(REVEAL_SECONDS)
-              setRevealed(result.privateKey)
-            })
+            setNotice(null)
+            void sensitive.run(
+              async () => {
+                const result = await vaultApi.reveal(
+                  vaultKey.inventory[0]!.addressId,
+                  passphrase,
+                  code,
+                )
+                setPassphrase('')
+                setCode('')
+                setSecondsLeft(REVEAL_SECONDS)
+                setRevealed(result.privateKey)
+              },
+              {
+                // Re-auth used up the current code: ask for a NEW one instead of retrying.
+                retryAfterReauth: false,
+                onReauthenticated: () => {
+                  setCode('')
+                  setNotice(
+                    'Identitas terkonfirmasi. Tunggu kode authenticator berikutnya, masukkan, lalu klik Tampilkan.',
+                  )
+                },
+              },
+            )
           }}
         >
           <p className="text-sm text-red-900">
@@ -494,6 +508,11 @@ function RevealDialog({ vaultKey, onClose }: { vaultKey: VaultKey; onClose: () =
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
             />
           </div>
+          {notice && (
+            <p role="status" className="text-sm text-emerald-800">
+              {notice}
+            </p>
+          )}
           <ErrorMessage error={sensitive.error} />
           {sensitive.panel}
           <div className="flex gap-2">

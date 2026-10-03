@@ -2,20 +2,36 @@ import { useState, type FormEvent } from 'react'
 import { ApiError, reauthApi } from '../services/api'
 import { Button, ErrorMessage, Field } from './ui'
 
+export interface SensitiveOptions {
+  /**
+   * Retry the action automatically after re-authentication (default true). Set false when the
+   * action carries its own one-time code: re-authentication consumes the current TOTP step,
+   * so a retry with the old code would always fail (and count as a wrong code).
+   */
+  retryAfterReauth?: boolean
+  /** Called after a successful re-authentication when the action is NOT retried. */
+  onReauthenticated?: () => void
+}
+
+interface Pending {
+  action: () => Promise<void>
+  options: SensitiveOptions
+}
+
 /**
  * Runs a sensitive action; when the server answers REAUTH_REQUIRED, asks for
  * password + authenticator code once and then retries the same action.
  */
 export function useSensitive() {
-  const [pending, setPending] = useState<null | (() => Promise<void>)>(null)
+  const [pending, setPending] = useState<Pending | null>(null)
   const [error, setError] = useState<unknown>(null)
 
-  async function run(action: () => Promise<void>) {
+  async function run(action: () => Promise<void>, options: SensitiveOptions = {}) {
     setError(null)
     try {
       await action()
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'REAUTH_REQUIRED') setPending(() => action)
+      if (err instanceof ApiError && err.code === 'REAUTH_REQUIRED') setPending({ action, options })
       else setError(err)
     }
   }
@@ -24,9 +40,10 @@ export function useSensitive() {
     <ReauthPanel
       onCancel={() => setPending(null)}
       onConfirmed={async () => {
-        const action = pending
+        const { action, options } = pending
         setPending(null)
-        await run(action)
+        if (options.retryAfterReauth === false) options.onReauthenticated?.()
+        else await run(action, options)
       }}
     />
   ) : null
@@ -48,6 +65,9 @@ function ReauthPanel({
 
   async function submit(event: FormEvent) {
     event.preventDefault()
+    // The panel may be rendered inside another form; its submit must not bubble up and
+    // trigger that form's action as well.
+    event.stopPropagation()
     setBusy(true)
     setError(null)
     try {

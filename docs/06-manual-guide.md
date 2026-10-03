@@ -195,8 +195,9 @@ Key Vault menyimpan private key dalam keadaan terenkripsi di **service signer te
 ### 8.4 Menampilkan key (break-glass)
 1. Klik **Tampilkan key** pada baris key, lalu isi **passphrase vault** dan **kode authenticator yang baru** (satu kode hanya berlaku sekali).
 2. Key tampil **tersamar**. Klik **Lihat** untuk memperlihatkannya. Kotak tertutup **otomatis setelah 60 detik**, atau klik **Tutup**.
-3. Maksimal **3 kali per jam**. Setiap tampilan tercatat (`KEY_REVEALED`) tanpa isi key.
-4. Pastikan tidak ada orang lain atau software perekam layar. Fitur ini bisa dimatikan total di server dengan `KEY_REVEAL_ENABLED=false`.
+3. Jika sistem meminta **konfirmasi identitas** (password + kode), kode itu terpakai untuk konfirmasi. Setelah berhasil, tunggu **kode authenticator berikutnya**, isi, lalu klik **Tampilkan** lagi.
+4. Maksimal **3 kali per jam**. Setiap tampilan tercatat (`KEY_REVEALED`) tanpa isi key.
+5. Pastikan tidak ada orang lain atau software perekam layar. Fitur ini bisa dimatikan total di server dengan `KEY_REVEAL_ENABLED=false`.
 
 ### 8.5 Ganti passphrase / pemulihan
 Bagian **Pengaturan passphrase**:
@@ -207,6 +208,7 @@ Bagian **Pengaturan passphrase**:
 | Pesan | Arti / tindakan |
 |-------|-----------------|
 | Wrong passphrase | Passphrase vault salah (dicatat). Setelah 5 kali, tunggu 15 menit |
+| Too many wrong passphrases | Batas 5 kali salah dalam 15 menit tercapai (berlaku juga untuk ganti passphrase, recovery, dan reveal). Tunggu 15 menit |
 | The vault is locked | Buka vault dulu |
 | …does not control the selected address | Key/seed/path tidak cocok dengan address yang dipilih. Periksa pilihan address atau derivation path |
 | The signer service is not reachable | Service signer mati atau tidak dikonfigurasi. Hubungi pengelola server |

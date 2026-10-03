@@ -1,7 +1,9 @@
-import { validateMnemonic } from '@scure/bip39'
+import { HARDENED_OFFSET, HDKey } from '@scure/bip32'
+import { mnemonicToSeedSync, validateMnemonic } from '@scure/bip39'
 import { wordlist } from '@scure/bip39/wordlists/english.js'
-import { mnemonicToAccount, privateKeyToAccount } from 'viem/accounts'
+import { privateKeyToAccount } from 'viem/accounts'
 import { AppError } from '@da/shared'
+import { wipe } from '../crypto/aead'
 
 export type SecretType = 'PRIVATE_KEY' | 'MNEMONIC'
 
@@ -59,13 +61,37 @@ export function deriveEvmKey(input: {
   if (!PATH_PATTERN.test(path)) {
     throw new AppError('VALIDATION_ERROR', "Derivation path must look like m/44'/60'/0'/0/0")
   }
-  const account = mnemonicToAccount(phrase, { path: path as `m/44'/60'/${string}` })
-  const raw = account.getHdKey().privateKey
-  if (!raw) throw new AppError('VALIDATION_ERROR', 'Could not derive a key at this path')
-  return {
-    privateKey: Buffer.from(raw),
-    address: account.address.toLowerCase(),
-    keyType: 'DERIVED_FROM_MNEMONIC',
-    derivationPath: path,
+  // Derive step by step so that the seed and every intermediate node can be wiped (ADR-017).
+  const seed = mnemonicToSeedSync(phrase)
+  let node = HDKey.fromMasterSeed(seed)
+  let privateKey: Buffer | null = null
+  try {
+    for (const segment of path.split('/').slice(1)) {
+      const hardened = segment.endsWith("'")
+      const index = Number(hardened ? segment.slice(0, -1) : segment)
+      if (index >= HARDENED_OFFSET) {
+        throw new AppError('VALIDATION_ERROR', "Derivation path must look like m/44'/60'/0'/0/0")
+      }
+      const child = node.deriveChild(hardened ? index + HARDENED_OFFSET : index)
+      node.wipePrivateData()
+      node = child
+    }
+    if (!node.privateKey)
+      throw new AppError('VALIDATION_ERROR', 'Could not derive a key at this path')
+    privateKey = Buffer.from(node.privateKey)
+    // viem needs a hex string here; strings cannot be wiped (known limitation, ADR-017).
+    const address = privateKeyToAccount(`0x${privateKey.toString('hex')}`).address
+    return {
+      privateKey,
+      address: address.toLowerCase(),
+      keyType: 'DERIVED_FROM_MNEMONIC',
+      derivationPath: path,
+    }
+  } catch (error) {
+    wipe(privateKey)
+    throw error
+  } finally {
+    node.wipePrivateData()
+    seed.fill(0)
   }
 }

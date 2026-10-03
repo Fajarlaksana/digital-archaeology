@@ -209,6 +209,25 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-0
   - Review otorisasi oleh REVIEWER (`authorizations:review`) belum dipakai; dipertimbangkan bersama maker-checker di Fase 9.
 - **Alternatif:** unggah dokumen terenkripsi (ditunda, butuh penyimpanan file + kunci), endpoint sign generik di signer (ditolak: bisa disalahgunakan untuk menandatangani permit/transaksi off-chain).
 
+## ADR-019 — Hasil review keamanan Fase 7 (7d)
+- **Status:** Accepted
+- **Tanggal:** 2026-10-04
+- **Konteks:** review menyeluruh signer + endpoint vault (prompt P7d). Tidak ada jalur kebocoran key/passphrase lewat log, error, response, atau audit. Delapan kelemahan ditemukan dan diperbaiki, masing-masing dengan test regresi yang terbukti gagal pada kode lama.
+- **Keputusan:**
+  1. **Operasi passphrase dijalankan berurutan** (`serial()` di `vault.service`: init, unlock, ganti passphrase, recovery, `withPassphrase`). Throttle 5 salah/15 menit sebelumnya bisa ditembus request paralel (20 dari 20 tebakan dievaluasi), dan banyak Argon2id 64 MiB paralel bisa membuat signer OOM. Konsekuensi: aksi passphrase yang bersamaan saling menunggu (masing-masing < 1 detik).
+  2. **Bungkus ulang memakai parameter KDF yang tersimpan** di `vault_config`. Sebelumnya ganti passphrase memakai `DEFAULT_KDF` terbaru, padahal unwrap memakai parameter tersimpan: menaikkan default di rilis berikutnya akan mengunci vault secara permanen (recovery pun tidak menolong). Menaikkan parameter KDF nanti butuh migrasi eksplisit (bungkus ulang kedua passphrase + simpan parameter baru).
+  3. **Kuota reveal dipesan sebelum `await`** dan dikembalikan jika tidak ada yang ditampilkan.
+  4. **Kebersihan memori:** `aead.open` menghapus buffer hasil `update()`/`final()` (juga saat verifikasi tag gagal, karena `update()` sudah mengeluarkan plaintext yang belum terautentikasi). Import seed menurunkan key langkah demi langkah dengan `@scure/bip32`, lalu menghapus seed BIP-39 dan setiap node HD (`wipePrivateData`).
+  5. **Transport backend → signer:** `SIGNER_URL` dengan `http` hanya boleh ke host loopback; selain itu wajib `https`, atau opt-out eksplisit `SIGNER_ALLOW_INSECURE_HTTP=true` yang memunculkan warning saat start. HMAC hanya menjamin integritas, bukan kerahasiaan, sedangkan request membawa passphrase dan (pada reveal) key.
+  6. **Reveal setelah konfirmasi ulang tidak di-retry otomatis.** Konfirmasi ulang memakai langkah TOTP saat ini (`mfaLastUsedStep`), sehingga retry dengan kode lama selalu gagal dan ikut menambah hitungan salah MFA. `useSensitive` mendapat opsi `retryAfterReauth: false`. Panel konfirmasi juga menghentikan propagasi submit: sebelumnya panel yang dirender di dalam form import/reveal ikut men-submit form induk (bug yang ditemukan saat perbaikan).
+  7. **Matriks test role × endpoint vault lengkap** (semua route `/api/vault/*` + `/api/challenges/:id/vault-signature`, 4 role non-SUPER_ADMIN → 403, signer tidak pernah dipanggil).
+- **Diterima / ditunda (dicatat dengan jujur):**
+  - Vault hanya terkunci otomatis saat **logout eksplisit** SUPER_ADMIN. Jika sesi berakhir karena kedaluwarsa, idle, dicabut, atau user dinonaktifkan, vault tetap terbuka sampai TTL (default 10 menit, maks. 60). Status unlock berlaku global, bukan per user. Diterima karena dibatasi TTL dan SUPER_ADMIN dipegang satu orang.
+  - **Port squatting di loopback:** jika signer mati, proses lain di server yang sama bisa memakai port 4000 dan menerima passphrase unlock berikutnya. Butuh eksekusi kode di server. Mitigasi di Fase 14: TLS dengan sertifikat yang dipin, atau Unix socket dengan izin file.
+  - **Hardening proses (Fase 14):** matikan core dump, swap terenkripsi/mati, jangan aktifkan diagnostic report / heap snapshot (isinya env, termasuk `SIGNER_HMAC_SECRET`), env signer terpisah dari backend. OOM tidak bisa ditangkap, sehingga `wipe()` tidak berjalan saat proses mati karena OOM.
+  - String JavaScript (passphrase, hex key untuk viem) tetap tidak bisa dihapus (ADR-017).
+  - Antrean passphrase tidak dibatasi panjangnya. Request yang menunggu terlalu lama bisa timeout di backend (30 detik) padahal signer tetap memprosesnya kemudian; audit backend lalu mencatat FAILURE untuk aksi yang akhirnya berhasil. Kemungkinannya kecil karena aksi ini hanya untuk SUPER_ADMIN.
+
 ---
 
 ## Jawaban pertanyaan terbuka (02-analysis bagian 5)
