@@ -220,6 +220,7 @@ SIGNER_ALLOW_INSECURE_HTTP=false     # opt-out eksplisit untuk jaringan containe
 RECOVERY_MIN_NET_VALUE=10            # nilai bersih minimum (FIAT_CURRENCY) agar tidak NOT_ECONOMIC
 FEE_MARGIN_PERCENT=20                # margin di atas estimasi fee EIP-1559
 ELIGIBILITY_BALANCE_MAX_AGE_HOURS=36 # saldo lebih tua dari ini = STALE_BALANCE
+APPROVAL_TTL_MINUTES=30              # approval transaksi berlaku selama ini, lalu EXPIRED
 SIGNER_HMAC_SECRET=                  # sama di backend & signer
 
 # --- hanya di env service signer/ ---

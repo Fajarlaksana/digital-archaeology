@@ -373,10 +373,15 @@ describe.skipIf(!testDatabaseUrl)('valuation, dashboard, reports, scheduler', ()
       expect(inactivity.body).toContain(evil.address)
       expect(inactivity.body).not.toContain(plain.address)
 
-      const audit = await db.auditLog.findFirst({
+      // Both exports are audited, in order (sequence, not insertion luck).
+      const audits = await db.auditLog.findMany({
         where: { userId: user.id, action: 'REPORT_EXPORTED' },
+        orderBy: { sequence: 'asc' },
       })
-      expect(audit?.resourceId).toBe('addresses-inventory')
+      expect(audits.map((a) => a.resourceId)).toEqual([
+        'addresses-inventory',
+        'addresses-inactivity',
+      ])
     })
 
     it('requires reports:read', async () => {

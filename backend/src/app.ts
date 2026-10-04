@@ -11,6 +11,7 @@ import { registerNetworkRoutes } from './controllers/networks'
 import { registerOverviewRoutes } from './controllers/overview'
 import { registerDestinationRoutes } from './controllers/destinations'
 import { registerEligibilityRoutes } from './controllers/eligibility'
+import { registerTransactionRoutes } from './controllers/transactions'
 import { registerOwnershipRoutes } from './controllers/ownership'
 import { registerScanRoutes } from './controllers/scans'
 import { registerUserRoutes } from './controllers/users'
@@ -133,6 +134,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       guards,
     })
     registerDestinationRoutes(app, { destinations: services.destinations, guards })
+    registerTransactionRoutes(app, { transactions: services.transactions, guards })
     registerEligibilityRoutes(app, {
       eligibility: services.eligibility,
       report: services.eligibilityReport,

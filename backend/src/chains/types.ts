@@ -19,6 +19,31 @@ export interface ChainAdapter {
    * personal_sign, EOA only). Never throws: malformed input is simply not valid.
    */
   verifyMessage(input: { address: string; message: string; signature: string }): Promise<boolean>
+  /**
+   * Builds the unsigned transfer exactly as it will be signed (Phase 9). Pure: every value
+   * (nonce, fees, gas) is passed in. `hash` is what the key signs; `payload` is canonical JSON.
+   */
+  buildUnsignedTransfer(input: UnsignedTransferInput): UnsignedTransfer
+}
+
+export interface UnsignedTransferInput {
+  chainId: number
+  nonce: number
+  /** Final recipient (the approved destination). */
+  recipient: string
+  asset: { isNative: boolean; contractAddress: string | null }
+  /** Base units of the asset. */
+  amount: bigint
+  gasLimit: bigint
+  maxFeePerGas: bigint
+  maxPriorityFeePerGas: bigint
+}
+
+export interface UnsignedTransfer {
+  /** Canonical, JSON-safe description (bigints as decimal strings) incl. the serialized tx. */
+  payload: Record<string, string | number>
+  /** 0x-prefixed lower-case hash the key must sign. */
+  hash: string
 }
 
 /** Read-only access to one network through its RPC node — the source of truth for balances. */

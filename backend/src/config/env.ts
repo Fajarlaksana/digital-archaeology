@@ -66,6 +66,10 @@ const envSchema = z
     /** Balances older than this are STALE_BALANCE (daily scans + slack). */
     ELIGIBILITY_BALANCE_MAX_AGE_HOURS: z.coerce.number().int().min(1).max(720).default(36),
 
+    // --- Transactions (Phase 9) ---
+    /** An approval stays valid this long; then the transaction must be previewed again. */
+    APPROVAL_TTL_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
+
     // --- Signer / key vault (Phase 7) ---
     /**
      * Plain http only to a loopback host: requests carry vault passphrases and (on reveal) keys,

@@ -229,13 +229,15 @@ M4 Production     : F12 → F13 → F14
 
 ## Fase 9 — Transaction Preview & Approval · M
 
-- [ ] `POST /api/transactions/preview`: bangun tx unsigned (from, to, value sweep, nonce, chainId, fee cap)
-- [ ] Simpan `unsigned_payload` + `unsigned_hash`, status `CREATED`
-- [ ] Halaman Recovery: tampilkan ulang Source/Destination/Asset/Amount/Fee/Network (SA 4.8)
-- [ ] Approval oleh REVIEWER ≠ pembuat, wajib dengan alasan, status `APPROVED`
-- [ ] Approval otomatis kedaluwarsa jika fee/saldo berubah di luar toleransi
+(ADR-022)
+- [x] `POST /api/transactions/preview`: syarat dicek ulang live (otorisasi, destination APPROVED, key di vault, chainId RPC), saldo + nonce + fee dibaca langsung dari RPC; tx EIP-1559 unsigned dibangun di `ChainAdapter.buildUnsignedTransfer` (native: sweep = saldo − gas × maxFee; token: seluruh saldo, `transfer()` calldata, gas + margin); opsi **test transfer** dengan jumlah lebih kecil
+- [x] Simpan `unsigned_payload` (kanonik + serialized) + `unsigned_hash` (keccak256, yang akan ditandatangani), status `CREATED`, address → `IN_PROGRESS`; satu transaksi aktif per address (unique index parsial)
+- [x] Tampilan ulang Source/Destination/Asset/Amount/Fee/Network/nonce/hash (SA 4.8) di halaman detail transaksi; daftar di **Transactions**; tombol **Buat preview** di Address Detail
+- [x] Approval/penolakan oleh REVIEWER ≠ pembuat (`SELF_APPROVAL` di service, trigger DB untuk APPROVED), alasan wajib, konfirmasi ulang ≤ 5 menit; pembatalan oleh ANALYST
+- [x] Kedaluwarsa otomatis (`EXPIRED` + alasan): approval > 30 menit (`APPROVAL_TTL_MINUTES`), nonce berubah, fee di atas cap yang di-approve, saldo tidak cukup, destination tidak lagi APPROVED, otorisasi tidak berlaku; dicek saat approve (dan kelak sebelum signing)
+- [x] Guard DB: field hasil preview immutable, transisi status hanya maju, fee = gas × maxFee, alasan wajib saat ditutup
 
-**DoD:** test membuktikan pembuat tidak bisa meng-approve tx miliknya sendiri, dan preview selalu memakai fee terbaru.
+**DoD:** test membuktikan pembuat tidak bisa meng-approve tx miliknya sendiri, dan preview selalu memakai fee terbaru. ✅ (keduanya diuji, termasuk di level DB)
 
 ---
 
@@ -310,6 +312,7 @@ M4 Production     : F12 → F13 → F14
 | 2026-10-01 | F0 | ADR-001/002/004–007 Accepted: TypeScript stack, EVM Sepolia, internal use, >3 operator |
 | 2026-10-01 | F1 | Monorepo + shared/backend/frontend, 49 test hijau. Pending: verifikasi Docker (Docker Desktop gagal start) |
 | 2026-10-02 | F1 | Docker Desktop (Hyper-V) hidup: `docker compose up -d` terverifikasi (port 5434), dev DB pindah ke Docker (ADR-013) |
+| 2026-10-05 | F9 | Preview tx EIP-1559 dari data live, approval maker-checker + kedaluwarsa otomatis (cap fee/nonce/saldo/30 menit), guard DB transaksi, halaman Transactions; 626 test hijau |
 | 2026-10-04 | F8b | Fee estimator EIP-1559 + eligibility engine (per aset, gas token dicadangkan), Recovery page, laporan CSV; 583 test hijau |
 | 2026-10-04 | F8a | Destination whitelist: bukti kendali via signature + approval REVIEWER independen (maker-checker di service & DB), halaman Destinations; 534 test hijau |
 | 2026-10-04 | F7d | Review keamanan Fase 7: 8 temuan diperbaiki (throttle paralel, KDF tersimpan, kuota reveal, wipe buffer, SIGNER_URL loopback, reveal setelah re-auth, nested form, matriks role) + bug nested form; 512 test hijau |

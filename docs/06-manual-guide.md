@@ -296,11 +296,34 @@ Menu **Recovery** menampilkan status tiap address (pilih network dan status), le
 
 ## 11. Proses recovery · *Fase 9–11*
 
-1. **Preview** (ANALYST): pilih address READY, pilih destination, lalu klik **Buat Preview**. Periksa Source, Destination, Asset, Amount, Fee, dan Network.
-2. **Approve** (REVIEWER, bukan pembuat preview): buka transaksi, cocokkan detail, isi alasan, lalu **Approve** atau **Reject**.
-3. **Sign** (SUPER_ADMIN): pastikan vault unlocked, lalu buka menu **Signing**, periksa ulang detail, klik **Sign**, dan masukkan kode MFA jika diminta.
+### 11.1 Preview · *Fase 9* ✅ · ANALYST
+1. Buka **Address Detail → Kelayakan recovery**, lalu klik **Buat preview** pada aset yang ingin dipindahkan.
+2. Pilih **destination** (hanya yang APPROVED di network yang sama) dan jumlahnya:
+   - **Seluruh saldo (sweep)**: untuk koin native, saldo dikurangi fee maksimum. Sisa kecil (fee yang tidak terpakai) akan tertinggal.
+   - **Test transfer kecil**: isi jumlah yang lebih kecil, disarankan untuk destination baru sebelum sweep.
+3. Sistem memeriksa ulang syarat (kepemilikan terverifikasi, destination APPROVED, key ada di vault), lalu membaca **saldo, nonce, dan fee terbaru langsung dari jaringan**. Hasilnya draft berstatus **CREATED**; tidak ada yang dikirim.
+4. Satu address hanya boleh punya **satu transaksi aktif**. Selama ada, Address Detail menampilkan tautan ke transaksi itu.
+
+### 11.2 Approve · *Fase 9* ✅ · REVIEWER (bukan pembuat preview)
+1. Buka **Transactions**, pilih transaksi berstatus CREATED. Periksa kotak **Periksa sebelum approve**: Source, Destination, Asset, Amount (SWEEP/TEST TRANSFER), Fee maksimum, Network, nonce, dan hash unsigned.
+2. Klik **Approve** atau **Tolak**, isi **alasan** (wajib). Sistem meminta konfirmasi password + kode authenticator bila konfirmasi terakhir lebih dari 5 menit lalu.
+3. Saat approve, sistem memeriksa ulang jaringan. Jika keadaan sudah berubah, transaksi menjadi **EXPIRED** dan perlu preview baru:
+
+| Alasan kedaluwarsa | Arti |
+|--------------------|------|
+| Masa berlaku approval habis | Lebih dari 30 menit sejak approve (belum ditandatangani) |
+| Nonce address berubah | Ada transaksi lain yang keluar dari address ini |
+| Fee jaringan naik di atas batas | Fee saat ini butuh lebih dari batas maksimum yang di-approve |
+| Saldo tidak lagi cukup | Saldo < jumlah + fee maksimum |
+| Destination tidak lagi APPROVED | Destination dinonaktifkan/ditolak |
+| Otorisasi tidak berlaku | Otorisasi kepemilikan kedaluwarsa |
+
+4. Pembuat preview **tidak bisa** meng-approve/menolak transaksinya sendiri, walaupun memegang role REVIEWER. ANALYST bisa **Batalkan** transaksi CREATED/APPROVED (alasan wajib). Setelah ditolak/dibatalkan/kedaluwarsa, address kembali bisa dinilai dan di-preview.
+
+### 11.3 Sign & broadcast · *Fase 10–11*
+1. **Sign** (SUPER_ADMIN): pastikan vault unlocked, lalu buka menu **Signing**, periksa ulang detail, klik **Sign**, dan masukkan kode MFA jika diminta.
    Sistem hanya menandatangani data yang persis sama dengan yang di-approve. Jika data berubah, transaksi ditolak.
-4. **Broadcast** (SUPER_ADMIN): klik **Broadcast**, lalu pantau status di **Transactions** sampai **CONFIRMED**.
+2. **Broadcast** (SUPER_ADMIN): klik **Broadcast**, lalu pantau status di **Transactions** sampai **CONFIRMED**.
 
 **Saran:** untuk destination baru di mainnet, kirim jumlah kecil dulu sebagai uji coba.
 

@@ -43,6 +43,8 @@ export const ERROR_HTTP_STATUS = {
   SIGNATURE_INVALID: 400,
   INSUFFICIENT_BALANCE: 422,
   FEE_ESTIMATION_FAILED: 502,
+  /** A previewed/approved tx left its tolerance (nonce, fee cap, balance, time): preview again. */
+  TRANSACTION_EXPIRED: 409,
   TRANSACTION_FAILED: 502,
 } as const
 

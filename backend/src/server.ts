@@ -43,6 +43,7 @@ const services = createServices(db, {
   minNetValue: env.RECOVERY_MIN_NET_VALUE,
   feeMarginPercent: env.FEE_MARGIN_PERCENT,
   balanceMaxAgeMs: env.ELIGIBILITY_BALANCE_MAX_AGE_HOURS * 3_600_000,
+  approvalTtlMs: env.APPROVAL_TTL_MINUTES * 60_000,
 })
 const scanQueue = createScanQueue({
   redisUrl: env.REDIS_URL,

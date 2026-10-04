@@ -17,6 +17,8 @@ import { PlaceholderPage } from './pages/PlaceholderPage'
 import { RecoveryPage } from './pages/RecoveryPage'
 import { ScanDetailPage } from './pages/ScanDetailPage'
 import { ScansPage } from './pages/ScansPage'
+import { TransactionDetailPage } from './pages/TransactionDetailPage'
+import { TransactionsPage } from './pages/TransactionsPage'
 import { UsersPage } from './pages/UsersPage'
 
 const PAGES: Record<string, () => React.JSX.Element> = {
@@ -28,6 +30,7 @@ const PAGES: Record<string, () => React.JSX.Element> = {
   '/authorizations': AuthorizationsPage,
   '/destinations': DestinationsPage,
   '/recovery': RecoveryPage,
+  '/transactions': TransactionsPage,
 }
 
 /** Direct URL access to a page the user may not see sends them home (the API denies it anyway). */
@@ -70,6 +73,14 @@ export function App() {
             element={
               <RequirePermission permission="scans:read">
                 <ScanDetailPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/transactions/:id"
+            element={
+              <RequirePermission permission="transactions:read">
+                <TransactionDetailPage />
               </RequirePermission>
             }
           />

@@ -259,6 +259,20 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-0
   8. **READY hanya informasi** (aturan 5): tidak ada job yang membuat atau mengirim transaksi berdasarkan status ini.
 - **Batasan:** nilai testnet tetap SIMULASI (ADR-016). Estimasi gas token memakai destination approved pertama di network. Fee L2 (L1 data fee) belum dihitung, sehingga dianggap jaringan L1/Sepolia. Akurasi READY baru diverifikasi terhadap wallet testnet sungguhan bersama verifikasi live M1.
 
+## ADR-022 — Transaction preview & approval (Fase 9)
+- **Status:** Accepted
+- **Tanggal:** 2026-10-05
+- **Konteks:** SA 4.8 + 02-analysis §2.7 + ADR-007. Pemilik projek memilih: toleransi = batas yang tertanam di tx + nonce + saldo; approval berlaku **30 menit**; sweep **plus** opsi test transfer kecil.
+- **Keputusan:**
+  1. **Preview dari data live.** Syarat dicek ulang saat preview (otorisasi VERIFIED belum kedaluwarsa, destination APPROVED di network yang sama dan bukan address sumber, key ada di vault), RPC harus melayani `chainId` network itu, lalu saldo, nonce, fee, dan gas token dibaca saat itu juga. Status eligibility yang tersimpan tidak dipakai.
+  2. **Tx EIP-1559 dibangun di `ChainAdapter.buildUnsignedTransfer`** (murni). `maxFeePerGas = ceil((2 × baseFee + tip) × (1 + margin))`, `maxPriorityFeePerGas = tip`, gas native 21 000, gas token = estimasi × (1 + margin). Native sweep = saldo − gas × maxFee (fee yang tidak terpakai tertinggal sebagai debu; sweep tepat nol tidak mungkin dengan EIP-1559). Token = seluruh saldo, `transfer(destination, amount)`.
+  3. **Yang disimpan = yang akan ditandatangani:** `unsigned_payload` (kanonik + serialized) dan `unsigned_hash` = keccak256(serialized). Trigger DB membuat semua field hasil preview immutable, sehingga approval selalu merujuk persis data itu.
+  4. **Satu transaksi aktif per address** (unique index parsial atas CREATED/APPROVED/SIGNED/BROADCASTED/PENDING) untuk mencegah bentrok nonce. Address menjadi `IN_PROGRESS` dan dikembalikan ke `NONE` (belum dinilai) saat transaksi ditolak/dibatalkan/kedaluwarsa.
+  5. **Maker-checker:** REVIEWER ≠ pembuat (`SELF_APPROVAL`), alasan wajib, konfirmasi ulang ≤ 5 menit. Di DB, trigger menolak status APPROVED tanpa baris approval APPROVED oleh user selain pembuat, dan transisi status hanya boleh maju.
+  6. **Toleransi = batas di dalam tx:** valid selama `2 × baseFee + tip` saat ini ≤ `maxFeePerGas` yang di-approve, nonce sama, dan saldo ≥ jumlah + fee maksimum (token: saldo token ≥ jumlah dan native ≥ fee maksimum), destination masih APPROVED, otorisasi masih berlaku, dan approval belum lewat `APPROVAL_TTL_MINUTES` (30). Diperiksa saat approve dan (Fase 10) tepat sebelum signing; timeout juga ditutup saat data dibaca.
+  7. **Mainnet** hanya bila `NETWORK_MODE=mainnet` (aturan 10).
+- **Batasan:** nonce memakai blockTag `latest`, sehingga transaksi lain yang masih di mempool tidak terlihat; ini ditangkap saat signing/broadcast (Fase 10–11). Tampilan fee mengasumsikan aset native network. Satu transaksi aktif per address berarti multi-aset diproses berurutan (token dulu, native terakhir).
+
 ---
 
 ## Jawaban pertanyaan terbuka (02-analysis bagian 5)

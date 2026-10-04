@@ -72,8 +72,8 @@ export const NAV_GROUPS: NavGroup[] = [
         path: '/transactions',
         permission: 'transactions:read',
         label: 'Transactions',
-        phase: 11,
-        description: 'Status broadcast dan konfirmasi transaksi.',
+        phase: 9,
+        description: 'Preview & approval (Fase 9); signing, broadcast, konfirmasi (Fase 10–11).',
       },
       {
         path: '/reports',

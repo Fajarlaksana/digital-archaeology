@@ -9,6 +9,7 @@ import { createAuditLogRepository } from '../repositories/audit-log.repository'
 import { createAuthorizationRepository } from '../repositories/authorization.repository'
 import { createDestinationRepository } from '../repositories/destination.repository'
 import { createEligibilityRepository } from '../repositories/eligibility.repository'
+import { createTransactionRepository } from '../repositories/transaction.repository'
 import { createNetworkRepository } from '../repositories/network.repository'
 import { createPriceRepository } from '../repositories/price.repository'
 import { createScanRepository } from '../repositories/scan.repository'
@@ -21,6 +22,7 @@ import { createDashboardService, type ScheduleInfo } from './dashboard.service'
 import { createNetworkService } from './network.service'
 import { createDestinationService } from './destination.service'
 import { createEligibilityService } from './eligibility.service'
+import { createTransactionService } from './transaction.service'
 import { createOwnershipService } from './ownership.service'
 import { createEligibilityReport, createReportService } from './report.service'
 import { createScanService } from './scan.service'
@@ -55,6 +57,8 @@ export interface ServiceConfig {
   minNetValue?: string
   feeMarginPercent?: number
   balanceMaxAgeMs?: number
+  /** How long a transaction approval stays valid (default 30 min). */
+  approvalTtlMs?: number
 }
 
 /** Wires repositories and services. The single place where the dependency graph is built. */
@@ -132,6 +136,19 @@ export function createServices(db: Database, config: ServiceConfig) {
     }),
     reports: createReportService({ db, audit, fiatCurrency }),
     eligibility,
+    transactions: createTransactionService({
+      transactions: createTransactionRepository(db),
+      prices,
+      signer: config.signer,
+      clientsFor: config.clientsFor,
+      audit,
+      logger: config.logger,
+      fiatCurrency,
+      feeMarginPercent: config.feeMarginPercent ?? 20,
+      approvalTtlMs: config.approvalTtlMs ?? 30 * 60_000,
+      networkMode: config.networkMode,
+      now,
+    }),
     eligibilityReport: createEligibilityReport({ db, audit, fiatCurrency }),
     vault: createVaultService({ signer: config.signer, addresses, audit, logger: config.logger }),
     ownership: createOwnershipService({

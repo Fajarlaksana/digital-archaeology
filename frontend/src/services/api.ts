@@ -773,3 +773,100 @@ export const eligibilityApi = {
       body: { networkId },
     }),
 }
+
+// ─── Transactions: preview & approval (Phase 9) ───
+
+export type TransactionStatus =
+  | 'CREATED'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'EXPIRED'
+  | 'SIGNED'
+  | 'BROADCASTED'
+  | 'PENDING'
+  | 'CONFIRMED'
+  | 'FAILED'
+  | 'CANCELLED'
+
+export interface PublicTransaction {
+  id: string
+  status: TransactionStatus
+  statusReason: string | null
+  network: {
+    id: string
+    name: string
+    displayName: string
+    isTestnet: boolean
+    chainId: number | null
+  }
+  source: { addressId: string; address: string; label: string | null }
+  destination: { id: string; address: string; label: string }
+  asset: {
+    id: string
+    symbol: string
+    decimals: number
+    isNative: boolean
+    contractAddress: string | null
+  }
+  amount: string
+  amountFormatted: string
+  sweep: boolean
+  nonce: number | null
+  gasLimit: string | null
+  maxFeePerGas: string | null
+  maxPriorityFeePerGas: string | null
+  networkFee: string | null
+  networkFeeFormatted: string | null
+  nativeSymbol: string
+  estimatedValue: string | null
+  valueSimulated: boolean
+  fiatCurrency: string
+  unsignedHash: string | null
+  unsignedPayload: Record<string, string | number> | null
+  createdBy: { id: string; name: string } | null
+  createdAt: string
+  approvals: Array<{
+    id: string
+    requestedBy: { id: string; name: string } | null
+    decidedBy: { id: string; name: string } | null
+    decision: 'APPROVED' | 'REJECTED' | null
+    reason: string | null
+    decidedAt: string | null
+    expiresAt: string | null
+  }>
+}
+
+const transactionAction = (id: string, action: string, reason: string) =>
+  apiFetch<{ transaction: PublicTransaction }>(`/api/transactions/${id}/${action}`, {
+    method: 'POST',
+    body: { reason },
+  }).then((r) => r.transaction)
+
+export const transactionsApi = {
+  list: (filter: { status?: TransactionStatus; addressId?: string } = {}) => {
+    const params = new URLSearchParams()
+    if (filter.status) params.set('status', filter.status)
+    if (filter.addressId) params.set('addressId', filter.addressId)
+    const qs = params.toString()
+    return apiFetch<{ transactions: PublicTransaction[] }>(
+      `/api/transactions${qs ? `?${qs}` : ''}`,
+    ).then((r) => r.transactions)
+  },
+  get: (id: string) =>
+    apiFetch<{ transaction: PublicTransaction }>(`/api/transactions/${id}`).then(
+      (r) => r.transaction,
+    ),
+  preview: (input: {
+    addressId: string
+    assetId: string
+    destinationId: string
+    amount: string | null
+  }) =>
+    apiFetch<{ transaction: PublicTransaction }>('/api/transactions/preview', {
+      method: 'POST',
+      body: input,
+    }).then((r) => r.transaction),
+  approve: (id: string, reason: string) => transactionAction(id, 'approve', reason),
+  reject: (id: string, reason: string) => transactionAction(id, 'reject', reason),
+  cancel: (id: string, reason: string) => transactionAction(id, 'cancel', reason),
+}
