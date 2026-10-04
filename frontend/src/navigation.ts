@@ -65,8 +65,8 @@ export const NAV_GROUPS: NavGroup[] = [
         path: '/recovery',
         permission: 'transactions:read',
         label: 'Recovery',
-        phase: 9,
-        description: 'Kelayakan, preview, dan approval transaksi.',
+        phase: 8,
+        description: 'Kelayakan recovery (Fase 8); preview & approval transaksi (Fase 9).',
       },
       {
         path: '/transactions',

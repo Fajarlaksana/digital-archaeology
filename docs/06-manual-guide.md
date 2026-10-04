@@ -265,17 +265,34 @@ Halaman **Authorizations** menampilkan semua otorisasi dengan filter status; kli
 3. REVIEWER yang ikut mengajukan atau membuktikan destination **tidak bisa** memutuskannya; tombol keputusan disembunyikan dan server menolak dengan `SELF_APPROVAL`.
 4. Destination yang ditolak/nonaktif bisa **Ajukan ulang** oleh ANALYST. Bukti kendali dan approval diulang dari awal.
 
-### 10.4 Status kelayakan · *8b*
-Menu **Recovery** menampilkan status kelayakan tiap address:
+### 10.4 Status kelayakan · *8b* ✅ · semua role (Hitung ulang: ANALYST)
+Kelayakan dinilai **otomatis setelah setiap scan**. ANALYST juga bisa menekan **Hitung ulang** di menu **Recovery**, misalnya setelah kepemilikan diverifikasi, destination di-approve, atau key di-import. Fee dibaca ulang dari jaringan setiap kali dinilai.
 
-| Status | Arti | Tindakan |
+Menu **Recovery** menampilkan status tiap address (pilih network dan status), lengkap dengan alasan dan tindakan berikutnya. **Address Detail → Kelayakan recovery** menampilkan rinciannya per aset: jumlah, nilai, estimasi fee, dan nilai bersih yang akan diterima. Laporan lengkap: **Unduh laporan kelayakan (CSV)**.
+
+| Status | Arti |
+|--------|------|
+| **READY** | Minimal satu aset layak diproses. Hanya informasi: **tidak ada aset yang dipindahkan otomatis**. Preview & approval transaksi ada di Fase 9 |
+| **NOT_ECONOMIC** | Nilai bersih setelah fee ≤ minimum (default $10) |
+| **NOT_ELIGIBLE** | Ada syarat yang belum terpenuhi (lihat alasan) |
+| Belum dinilai | Address belum pernah dinilai |
+
+| Alasan | Arti | Tindakan |
 |--------|------|----------|
-| READY | Siap diproses | Lanjut ke preview |
-| NOT_VERIFIED | Kepemilikan belum terverifikasi | Lakukan langkah 9 |
-| NO_KEY_IN_VAULT | Key address belum di-import ke vault | SUPER_ADMIN melakukan langkah 8.3 |
-| NO_DESTINATION | Belum ada destination yang di-approve | Lakukan langkah 10.1–10.2 |
-| NOT_ECONOMIC | Fee ≥ nilai aset | Biarkan, atau tunggu fee turun |
-| NEEDS_GAS_FUNDING | Token tanpa saldo native untuk gas | Keputusan manual: top-up gas atau abaikan |
+| Saldo sudah lama | Scan terakhir lebih lama dari batas (default 36 jam) | Jalankan scan ulang |
+| Tidak ada saldo | Semua saldo nol | Tidak ada yang perlu dipulihkan |
+| Kepemilikan belum terverifikasi | Belum ada otorisasi VERIFIED | Langkah 9 |
+| Otorisasi kedaluwarsa | Semua otorisasi VERIFIED sudah lewat masa berlaku | Tambah otorisasi baru, verifikasi ulang |
+| Belum ada destination approved | Network ini belum punya wallet tujuan yang sah | Langkah 10.1–10.3 |
+| Key belum ada di vault | Private key address belum di-import | SUPER_ADMIN, langkah 8.3 |
+| Vault tidak bisa dihubungi | Service signer mati/tidak dikonfigurasi | Hubungi pengelola server |
+| Harga tidak tersedia | Aset (atau koin native untuk menilai gas) belum punya harga | ADMIN mengatur price id (7.3) |
+| Fee tidak bisa diestimasi | RPC gagal membaca fee | Periksa RPC, hitung ulang |
+| Fee melebihi saldo | Saldo native habis untuk fee | Biarkan |
+| Nilai bersih di bawah minimum | Nilai setelah fee ≤ minimum | Biarkan, atau tunggu fee turun |
+| Perlu dana gas | Token bernilai, tetapi tidak ada koin native untuk gas | Keputusan manual: top-up gas atau abaikan |
+
+> Gas untuk token dicadangkan dulu dari saldo native, baru sisanya dinilai sebagai sweep native. Karena itu, sebuah address bisa READY untuk tokennya tetapi NOT_ECONOMIC untuk koin native-nya.
 
 ## 11. Proses recovery · *Fase 9–11*
 

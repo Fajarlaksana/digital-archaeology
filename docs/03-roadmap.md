@@ -202,7 +202,7 @@ M4 Production     : F12 → F13 → F14
 
 ## Fase 8 — Destination Whitelist & Eligibility Engine · M
 
-> Dikerjakan dalam sesi: **8a** destination whitelist ✅ · **8b** fee estimator + eligibility engine.
+> Dikerjakan dalam sesi: **8a** destination whitelist ✅ · **8b** fee estimator + eligibility engine ✅.
 
 **8a — Destination whitelist** (ADR-020)
 - [x] `destinations` per network: dibuat ANALYST (`destinations:create`), address dikanonkan lewat `ChainAdapter`, tidak pernah dihapus/diedit (trigger DB: address & network immutable)
@@ -212,14 +212,18 @@ M4 Production     : F12 → F13 → F14
 - [x] Permission baru `destinations:read` (semua role); audit setiap langkah; matriks test role × endpoint
 - [x] Halaman **Destinations** (daftar + filter status, tambah, buktikan kendali, approve/tolak/nonaktifkan, riwayat keputusan)
 
-**8b — Fee estimator & eligibility engine**
-- [ ] Fee estimator (EIP-1559) + margin konfigurasi
-- [ ] Eligibility engine sesuai SA 4.7 + revisi 02-analysis bagian 2.6 (`NEEDS_GAS_FUNDING`) + cek key tersedia di vault (`NO_KEY_IN_VAULT`)
-- [ ] Field `recovery_status` + alasan, terlihat di UI
-- [ ] Eligibility report (CSV)
-- [ ] Unit test semua cabang aturan eligibility
+**8b — Fee estimator & eligibility engine** (ADR-021)
+- [x] Fee estimator EIP-1559 lewat `ChainReader.getFeeData` (dibaca ulang setiap evaluasi): `maxFee = 2×baseFee + tip`, native 21 000 gas, token lewat `estimateTokenTransferGas`, margin `FEE_MARGIN_PERCENT` (default 20%), dibulatkan ke atas, semuanya bigint
+- [x] Eligibility engine murni (`domain/eligibility.ts`) sesuai SA 4.7 + 02-analysis §2.6: gerbang alamat (saldo basi, tanpa saldo, otorisasi belum/kedaluwarsa, tanpa destination approved, key tidak di vault / signer tak terjangkau), lalu per aset (harga, fee, `FEE_EXCEEDS_BALANCE`, `BELOW_MINIMUM` ≤ `RECOVERY_MIN_NET_VALUE` = $10, `NEEDS_GAS_FUNDING`); gas token dicadangkan dari saldo native sebelum menilai sweep native
+- [x] Hasil per aset di tabel `asset_eligibility` (CHECK: status hanya READY/NOT_ELIGIBLE/NOT_ECONOMIC, READY tanpa alasan, alasan wajib selain READY); `recovery_status` + `recovery_reason` + `eligibility_checked_at` di address; address dalam workflow (IN_PROGRESS/TRANSFERRED) dan yang diarsipkan tidak disentuh
+- [x] Dinilai otomatis setelah scan selesai, atau **Hitung ulang** (`scans:run`); audit `ELIGIBILITY_EVALUATED`
+- [x] UI: halaman **Recovery** (filter network + status, alasan + tindakan, aturan yang berlaku), bagian **Kelayakan recovery** per aset di Address Detail, filter `recoveryStatus` di API address
+- [x] Laporan CSV kelayakan (`/api/reports/eligibility.csv`, lewat `lib/csv.ts`)
+- [x] Unit test semua cabang aturan eligibility (25) + integrasi (19) + live test fee Sepolia
 
-**DoD — Milestone M2 tercapai:** daftar address `READY` akurat, dan setiap address `NOT_*` punya alasan yang jelas. Tag `v0.2.0-m2`.
+**DoD — Milestone M2:** daftar address `READY` akurat, dan setiap address `NOT_*` punya alasan yang jelas. Tag `v0.2.0-m2`.
+- [x] Setiap `NOT_*` punya alasan + tindakan (diuji)
+- [ ] Akurasi `READY` dicek terhadap wallet testnet sungguhan (bersama verifikasi live M1: butuh `SEPOLIA_RPC_URL`, `EXPLORER_API_KEY`, wallet testnet) → lalu tag `v0.2.0-m2`
 
 ---
 
@@ -306,6 +310,7 @@ M4 Production     : F12 → F13 → F14
 | 2026-10-01 | F0 | ADR-001/002/004–007 Accepted: TypeScript stack, EVM Sepolia, internal use, >3 operator |
 | 2026-10-01 | F1 | Monorepo + shared/backend/frontend, 49 test hijau. Pending: verifikasi Docker (Docker Desktop gagal start) |
 | 2026-10-02 | F1 | Docker Desktop (Hyper-V) hidup: `docker compose up -d` terverifikasi (port 5434), dev DB pindah ke Docker (ADR-013) |
+| 2026-10-04 | F8b | Fee estimator EIP-1559 + eligibility engine (per aset, gas token dicadangkan), Recovery page, laporan CSV; 583 test hijau |
 | 2026-10-04 | F8a | Destination whitelist: bukti kendali via signature + approval REVIEWER independen (maker-checker di service & DB), halaman Destinations; 534 test hijau |
 | 2026-10-04 | F7d | Review keamanan Fase 7: 8 temuan diperbaiki (throttle paralel, KDF tersimpan, kuota reveal, wipe buffer, SIGNER_URL loopback, reveal setelah re-auth, nested form, matriks role) + bug nested form; 512 test hijau |
 | 2026-10-03 | F7c | Ownership verification: otorisasi + hash dokumen di browser, challenge sekali pakai, verifikasi via vault / wallet browser / tempel signature; 498 test hijau |

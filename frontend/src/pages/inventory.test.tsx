@@ -51,6 +51,8 @@ const ADDRESS: PublicAddress = {
   balanceStatus: 'UNKNOWN',
   authorizationStatus: 'UNVERIFIED',
   recoveryStatus: 'NONE',
+  recoveryReasons: [],
+  eligibilityCheckedAt: null,
   reviewFlag: false,
   lastActivityAt: null,
   inactiveDays: null,
@@ -221,6 +223,7 @@ describe('Address detail', () => {
       [`GET /api/addresses/${ADDRESS.id}/balances`]: () => json(200, { balances: [] }),
       [`GET /api/addresses/${ADDRESS.id}/activity`]: () => json(200, { history: [] }),
       [`GET /api/addresses/${ADDRESS.id}/authorizations`]: () => json(200, { authorizations: [] }),
+      [`GET /api/addresses/${ADDRESS.id}/eligibility`]: () => json(200, { assets: [] }),
     })
     renderAt(`/addresses/${ADDRESS.id}`)
     expect(await screen.findByRole('heading', { name: ADDRESS.address })).toBeTruthy()

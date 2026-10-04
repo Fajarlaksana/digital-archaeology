@@ -72,6 +72,23 @@ describe('parseEnv', () => {
     ).toBe('http://signer:4000')
   })
 
+  it('applies eligibility defaults and validates the minimum net value', () => {
+    expect(parseEnv(VALID)).toMatchObject({
+      RECOVERY_MIN_NET_VALUE: '10',
+      FEE_MARGIN_PERCENT: 20,
+      ELIGIBILITY_BALANCE_MAX_AGE_HOURS: 36,
+    })
+    expect(parseEnv({ ...VALID, RECOVERY_MIN_NET_VALUE: '12.50' }).RECOVERY_MIN_NET_VALUE).toBe(
+      '12.50',
+    )
+    for (const bad of ['-1', '1e3', 'ten', '1.123456789']) {
+      expect(() => parseEnv({ ...VALID, RECOVERY_MIN_NET_VALUE: bad })).toThrow(
+        /RECOVERY_MIN_NET_VALUE/,
+      )
+    }
+    expect(() => parseEnv({ ...VALID, FEE_MARGIN_PERCENT: '-5' })).toThrow(/FEE_MARGIN_PERCENT/)
+  })
+
   it('applies session defaults', () => {
     expect(parseEnv(VALID)).toMatchObject({ SESSION_TTL_HOURS: 12, SESSION_IDLE_MINUTES: 30 })
   })

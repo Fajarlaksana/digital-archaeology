@@ -8,6 +8,7 @@ import { createAddressRepository } from '../repositories/address.repository'
 import { createAuditLogRepository } from '../repositories/audit-log.repository'
 import { createAuthorizationRepository } from '../repositories/authorization.repository'
 import { createDestinationRepository } from '../repositories/destination.repository'
+import { createEligibilityRepository } from '../repositories/eligibility.repository'
 import { createNetworkRepository } from '../repositories/network.repository'
 import { createPriceRepository } from '../repositories/price.repository'
 import { createScanRepository } from '../repositories/scan.repository'
@@ -19,8 +20,9 @@ import { createChainHealth } from './chain-health'
 import { createDashboardService, type ScheduleInfo } from './dashboard.service'
 import { createNetworkService } from './network.service'
 import { createDestinationService } from './destination.service'
+import { createEligibilityService } from './eligibility.service'
 import { createOwnershipService } from './ownership.service'
-import { createReportService } from './report.service'
+import { createEligibilityReport, createReportService } from './report.service'
 import { createScanService } from './scan.service'
 import { createUserService } from './user.service'
 import { createValuationService } from './valuation.service'
@@ -49,6 +51,10 @@ export interface ServiceConfig {
   signer: SignerClient
   /** Ownership challenge lifetime (default 15 min). */
   challengeTtlMs?: number
+  /** Eligibility (Phase 8b): minimum net fiat value, fee margin %, max balance age. */
+  minNetValue?: string
+  feeMarginPercent?: number
+  balanceMaxAgeMs?: number
 }
 
 /** Wires repositories and services. The single place where the dependency graph is built. */
@@ -62,12 +68,28 @@ export function createServices(db: Database, config: ServiceConfig) {
   const isEnvSet = config.isEnvSet ?? ((name: string) => Boolean(process.env[name]))
   const fiatCurrency = config.fiatCurrency
 
+  const prices = createPriceRepository(db)
   const valuation = createValuationService({
-    prices: createPriceRepository(db),
+    prices,
     provider: config.priceProvider,
     audit,
     fiatCurrency,
     logger: config.logger,
+  })
+
+  const eligibility = createEligibilityService({
+    eligibility: createEligibilityRepository(db),
+    networks,
+    prices,
+    signer: config.signer,
+    clientsFor: config.clientsFor,
+    audit,
+    logger: config.logger,
+    fiatCurrency,
+    minNetValue: config.minNetValue ?? '10',
+    feeMarginPercent: config.feeMarginPercent ?? 20,
+    balanceMaxAgeMs: config.balanceMaxAgeMs ?? 36 * 3_600_000,
+    now,
   })
 
   return {
@@ -98,6 +120,8 @@ export function createServices(db: Database, config: ServiceConfig) {
       // New balances get the latest stored prices right away (no wait for the next price job).
       afterScan: async (networkId) => {
         await valuation.revalueNetwork(networkId)
+        // Fresh balances → fresh eligibility (information only, CLAUDE.md rule 5).
+        await eligibility.evaluateNetwork(networkId)
       },
     }),
     valuation,
@@ -107,6 +131,8 @@ export function createServices(db: Database, config: ServiceConfig) {
       scheduleInfo: config.scheduleInfo ?? (async () => null),
     }),
     reports: createReportService({ db, audit, fiatCurrency }),
+    eligibility,
+    eligibilityReport: createEligibilityReport({ db, audit, fiatCurrency }),
     vault: createVaultService({ signer: config.signer, addresses, audit, logger: config.logger }),
     ownership: createOwnershipService({
       authorizations: createAuthorizationRepository(db),

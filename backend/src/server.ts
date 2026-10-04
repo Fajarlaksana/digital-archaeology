@@ -40,6 +40,9 @@ const services = createServices(db, {
   scheduleInfo: () => maintenance.info(),
   signer: createHttpSignerClient({ baseUrl: env.SIGNER_URL, secret: env.SIGNER_HMAC_SECRET }),
   challengeTtlMs: env.CHALLENGE_TTL_MINUTES * 60_000,
+  minNetValue: env.RECOVERY_MIN_NET_VALUE,
+  feeMarginPercent: env.FEE_MARGIN_PERCENT,
+  balanceMaxAgeMs: env.ELIGIBILITY_BALANCE_MAX_AGE_HOURS * 3_600_000,
 })
 const scanQueue = createScanQueue({
   redisUrl: env.REDIS_URL,

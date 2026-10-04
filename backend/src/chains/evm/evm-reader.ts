@@ -68,5 +68,24 @@ export function createEvmReader(options: EvmReaderOptions): ChainReader {
       call('nonce', 'ACTIVITY_READ_FAILED', () =>
         client.getTransactionCount({ address: address as Address, blockTag: 'latest' }),
       ),
+    getFeeData: () =>
+      call('fee data', 'FEE_ESTIMATION_FAILED', async () => {
+        const [block, maxPriorityFeePerGas] = await Promise.all([
+          client.getBlock({ blockTag: 'latest' }),
+          client.estimateMaxPriorityFeePerGas(),
+        ])
+        if (block.baseFeePerGas === null) throw new Error('Network does not support EIP-1559')
+        return { baseFeePerGas: block.baseFeePerGas, maxPriorityFeePerGas }
+      }),
+    estimateTokenTransferGas: ({ from, token, to, amount }) =>
+      call('token transfer gas', 'FEE_ESTIMATION_FAILED', () =>
+        client.estimateContractGas({
+          address: token as Address,
+          abi: erc20Abi,
+          functionName: 'transfer',
+          args: [to as Address, amount],
+          account: from as Address,
+        }),
+      ),
   }
 }

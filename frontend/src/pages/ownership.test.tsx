@@ -18,6 +18,8 @@ const ADDRESS: PublicAddress = {
   balanceStatus: 'HAS_BALANCE',
   authorizationStatus: 'PENDING',
   recoveryStatus: 'NONE',
+  recoveryReasons: [],
+  eligibilityCheckedAt: null,
   reviewFlag: false,
   lastActivityAt: null,
   inactiveDays: 400,
@@ -68,6 +70,7 @@ function backend(
     [`GET /api/addresses/${ADDRESS.id}`]: () => json(200, { address: ADDRESS }),
     [`GET /api/addresses/${ADDRESS.id}/balances`]: () => json(200, { balances: [] }),
     [`GET /api/addresses/${ADDRESS.id}/activity`]: () => json(200, { history: [] }),
+    [`GET /api/addresses/${ADDRESS.id}/eligibility`]: () => json(200, { assets: [] }),
     [`GET /api/addresses/${ADDRESS.id}/authorizations`]: () =>
       json(200, { authorizations: [AUTH] }),
     [`POST /api/authorizations/${AUTH.id}/challenges`]: () => json(201, { challenge: CHALLENGE }),

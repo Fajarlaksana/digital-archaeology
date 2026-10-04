@@ -54,6 +54,18 @@ const envSchema = z
       .default('0 2 * * *'),
     SCHEDULER_TIMEZONE: z.string().min(1).default('Asia/Jakarta'),
 
+    // --- Recovery eligibility (Phase 8b) ---
+    /** Minimum fiat value that must arrive after fees; at or below it an asset is NOT_ECONOMIC. */
+    RECOVERY_MIN_NET_VALUE: z
+      .string()
+      .trim()
+      .regex(/^\d+(\.\d{1,8})?$/, 'must be a decimal amount, e.g. 10 or 12.50')
+      .default('10'),
+    /** Safety margin on top of the EIP-1559 fee estimate, in percent (docs/02 §2.6). */
+    FEE_MARGIN_PERCENT: z.coerce.number().int().min(0).max(200).default(20),
+    /** Balances older than this are STALE_BALANCE (daily scans + slack). */
+    ELIGIBILITY_BALANCE_MAX_AGE_HOURS: z.coerce.number().int().min(1).max(720).default(36),
+
     // --- Signer / key vault (Phase 7) ---
     /**
      * Plain http only to a loopback host: requests carry vault passphrases and (on reveal) keys,

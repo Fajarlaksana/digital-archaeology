@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { MAX_LABEL_LENGTH, MAX_OWNER_REFERENCE_LENGTH } from '../domain/address-import'
-import { ActivityStatus } from '../generated/prisma/enums'
+import { ActivityStatus, RecoveryStatus } from '../generated/prisma/enums'
 import { requestMeta, type Guards } from '../auth/plugin'
 import { MAX_CSV_CHARS, type AddressService } from '../services/address.service'
 import type { AuthContext } from '../services/auth.service'
@@ -16,6 +16,7 @@ const label = z.string().trim().max(MAX_LABEL_LENGTH)
 const listQuery = z.object({
   networkId: z.uuid().optional(),
   activityStatus: z.enum(ActivityStatus).optional(),
+  recoveryStatus: z.enum(RecoveryStatus).optional(),
   search: z.string().trim().max(100).optional(),
   archived: z.enum(['exclude', 'include', 'only']).default('exclude'),
   page: z.coerce.number().int().min(1).default(1),

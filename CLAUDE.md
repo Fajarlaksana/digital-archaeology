@@ -34,6 +34,7 @@ Kebutuhan lengkap: `system_analysis_digital_archaeology.md`. Revisi & keputusan:
 - Jangan pernah memasukkan URL RPC atau API key ke pesan error atau log.
 - Signer tidak boleh punya endpoint tanda tangan pesan bebas: hanya challenge kepemilikan yang lolos `parseChallengeMessage` (ADR-018). Dokumen otorisasi tidak diunggah, hanya SHA-256-nya.
 - Maker-checker: keputusan approval (destination, kelak transaksi) tidak boleh diambil peminta, pembuat, atau pembukti (`SELF_APPROVAL`); tegakkan di service **dan** DB. Destination hanya bisa APPROVED setelah bukti kendali via signature (ADR-020).
+- Eligibility hanya informasi: aturannya di `domain/eligibility.ts` (murni, diuji per cabang), fee dibaca ulang lewat `ChainReader.getFeeData` dan tidak pernah dipakai ulang untuk transaksi. Jangan pernah membuat job yang bertindak otomatis atas status READY (ADR-021).
 - Nilai fiat: hitung hanya dengan `domain/valuation.ts` (decimal.js), simpan sebagai string/NUMERIC, dan tampilkan dengan `formatFiat` (tanpa `Number`). Nilai testnet wajib berlabel SIMULASI dan dijumlahkan terpisah (ADR-016).
 - Export CSV wajib lewat `lib/csv.ts` (proteksi formula injection).
 

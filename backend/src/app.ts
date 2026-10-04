@@ -10,6 +10,7 @@ import { registerHealthRoutes } from './controllers/health'
 import { registerNetworkRoutes } from './controllers/networks'
 import { registerOverviewRoutes } from './controllers/overview'
 import { registerDestinationRoutes } from './controllers/destinations'
+import { registerEligibilityRoutes } from './controllers/eligibility'
 import { registerOwnershipRoutes } from './controllers/ownership'
 import { registerScanRoutes } from './controllers/scans'
 import { registerUserRoutes } from './controllers/users'
@@ -132,6 +133,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       guards,
     })
     registerDestinationRoutes(app, { destinations: services.destinations, guards })
+    registerEligibilityRoutes(app, {
+      eligibility: services.eligibility,
+      report: services.eligibilityReport,
+      guards,
+    })
     registerOverviewRoutes(app, {
       dashboard: services.dashboard,
       reports: services.reports,

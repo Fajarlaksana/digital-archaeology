@@ -1,6 +1,6 @@
 import { AppError, type ErrorCode } from '@da/shared'
 import type { ChainClientFactory } from '../../src/chains/clients'
-import type { ActivitySummary } from '../../src/chains/types'
+import type { ActivitySummary, FeeData } from '../../src/chains/types'
 
 export interface FakeAccount {
   nonce: number
@@ -29,6 +29,11 @@ export function createFakeChain() {
   let onlyNetworks: Set<string> | null = null
   let servedChainId: number | null = null
   const reads: string[] = []
+  let fees: FeeData | Error = {
+    baseFeePerGas: 10_000_000_000n,
+    maxPriorityFeePerGas: 1_000_000_000n,
+  }
+  let tokenGas: bigint | Error = 50_000n
 
   const account = (address: string): FakeAccount => {
     reads.push(address)
@@ -48,6 +53,14 @@ export function createFakeChain() {
         getNativeBalance: async (a) => account(a).native,
         getTokenBalance: async (a, contract) => account(a).tokens?.[contract.toLowerCase()] ?? 0n,
         getOutgoingNonce: async (a) => account(a).nonce,
+        getFeeData: async () => {
+          if (fees instanceof Error) throw fees
+          return fees
+        },
+        estimateTokenTransferGas: async () => {
+          if (tokenGas instanceof Error) throw tokenGas
+          return tokenGas
+        },
       },
       activity: { getActivity: async (a) => account(a).activity },
     }
@@ -67,6 +80,13 @@ export function createFakeChain() {
     },
     serveChainId(id: number | null) {
       servedChainId = id
+    },
+    /** EIP-1559 inputs served by getFeeData (default: base 10 gwei, tip 1 gwei), or a failure. */
+    setFees(value: FeeData | Error) {
+      fees = value
+    },
+    setTokenGas(value: bigint | Error) {
+      tokenGas = value
     },
   }
 }

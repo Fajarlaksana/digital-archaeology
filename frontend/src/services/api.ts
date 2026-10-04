@@ -203,7 +203,10 @@ export interface PublicAddress {
   activityStatus: 'UNKNOWN' | 'ACTIVE' | 'INACTIVE'
   balanceStatus: 'UNKNOWN' | 'EMPTY' | 'HAS_BALANCE'
   authorizationStatus: string
-  recoveryStatus: string
+  recoveryStatus: RecoveryStatus
+  /** Eligibility reason codes (Phase 8b), most relevant first. */
+  recoveryReasons: string[]
+  eligibilityCheckedAt: string | null
   reviewFlag: boolean
   lastActivityAt: string | null
   inactiveDays: number | null
@@ -225,8 +228,12 @@ export interface AddressPage {
   pageSize: number
 }
 
+export type RecoveryStatus =
+  'NONE' | 'NOT_ELIGIBLE' | 'NOT_ECONOMIC' | 'READY' | 'IN_PROGRESS' | 'TRANSFERRED'
+
 export interface AddressQuery {
   networkId?: string
+  recoveryStatus?: RecoveryStatus
   search?: string
   archived?: 'exclude' | 'include' | 'only'
   page?: number
@@ -491,6 +498,7 @@ export const pricesApi = {
 export const reportUrls = {
   inventory: '/api/reports/addresses.csv?type=inventory',
   inactivity: '/api/reports/addresses.csv?type=inactivity',
+  eligibility: '/api/reports/eligibility.csv',
 }
 
 /** Formats a fiat amount string for display without ever parsing it into a float. */
@@ -714,4 +722,54 @@ export const destinationsApi = {
   reject: (id: string, reason: string) => destinationAction(id, 'reject', { reason }),
   disable: (id: string, reason: string) => destinationAction(id, 'disable', { reason }),
   resubmit: (id: string) => destinationAction(id, 'resubmit'),
+}
+
+// ─── Recovery eligibility (Phase 8b) ───
+
+export interface AssetEligibility {
+  assetId: string
+  symbol: string
+  isNative: boolean
+  status: 'READY' | 'NOT_ELIGIBLE' | 'NOT_ECONOMIC'
+  reason: string | null
+  /** Base units and the exact decimal form — never parsed into a float. */
+  quantity: string
+  formatted: string
+  feeEstimate: string | null
+  valueFiat: string | null
+  feeFiat: string | null
+  netFiat: string | null
+  fiatCurrency: string
+  simulated: boolean
+  computedAt: string
+}
+
+export interface EligibilitySummary {
+  networkId: string
+  evaluated: number
+  ready: number
+  notEligible: number
+  notEconomic: number
+  feeError: string | null
+  computedAt: string
+}
+
+export interface EligibilityConfig {
+  minNetValue: string
+  feeMarginPercent: number
+  balanceMaxAgeHours: number
+  fiatCurrency: string
+}
+
+export const eligibilityApi = {
+  config: () => apiFetch<EligibilityConfig>('/api/eligibility/config'),
+  forAddress: (addressId: string) =>
+    apiFetch<{ assets: AssetEligibility[] }>(`/api/addresses/${addressId}/eligibility`).then(
+      (r) => r.assets,
+    ),
+  evaluate: (networkId: string) =>
+    apiFetch<EligibilitySummary>('/api/eligibility/evaluate', {
+      method: 'POST',
+      body: { networkId },
+    }),
 }

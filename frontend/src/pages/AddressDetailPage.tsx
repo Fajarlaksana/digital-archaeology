@@ -5,6 +5,7 @@ import { useAuth } from '../auth/useAuth'
 import { Badge, Button, ErrorMessage, Field } from '../components/ui'
 import { addressesApi, formatFiat, scansApi, type PublicAddress } from '../services/api'
 import { ADDRESSES_KEY, ActivityBadge } from './AddressesPage'
+import { EligibilitySection } from './EligibilitySection'
 import { OwnershipSection } from './OwnershipSection'
 
 export function AddressDetailPage() {
@@ -147,6 +148,7 @@ function Detail({ address: a, canManage }: { address: PublicAddress; canManage: 
       </section>
 
       <OwnershipSection addressId={a.id} archived={a.archivedAt !== null} />
+      {!a.archivedAt && <EligibilitySection address={a} />}
       <BalancesSection addressId={a.id} />
       <HistorySection addressId={a.id} />
     </>

@@ -194,6 +194,8 @@ describe('Address detail with scan data', () => {
     const id = RESULT.addressId
     mockBackend({
       'GET /api/auth/me': () => json(200, session('ANALYST', ANALYST)),
+      [`GET /api/addresses/${id}/eligibility`]: () => json(200, { assets: [] }),
+      [`GET /api/addresses/${id}/authorizations`]: () => json(200, { authorizations: [] }),
       [`GET /api/addresses/${id}`]: () =>
         json(200, {
           address: {
@@ -206,6 +208,8 @@ describe('Address detail with scan data', () => {
             balanceStatus: 'HAS_BALANCE',
             authorizationStatus: 'UNVERIFIED',
             recoveryStatus: 'NONE',
+            recoveryReasons: [],
+            eligibilityCheckedAt: null,
             reviewFlag: false,
             lastActivityAt: null,
             inactiveDays: 1148,

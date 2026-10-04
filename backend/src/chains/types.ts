@@ -31,6 +31,20 @@ export interface ChainReader {
   getTokenBalance(address: string, contractAddress: string): Promise<bigint>
   /** Number of transactions ever sent by the address (EVM nonce). */
   getOutgoingNonce(address: string): Promise<number>
+  /** Current EIP-1559 fee inputs (wei per gas). Recalculated before every use (docs/02 §2.6). */
+  getFeeData(): Promise<FeeData>
+  /** Gas needed for `from` to send `amount` of an ERC-20 token to `to`. */
+  estimateTokenTransferGas(input: {
+    from: string
+    token: string
+    to: string
+    amount: bigint
+  }): Promise<bigint>
+}
+
+export interface FeeData {
+  baseFeePerGas: bigint
+  maxPriorityFeePerGas: bigint
 }
 
 /** History of an address, from an indexer / block explorer (RPC cannot provide it). */

@@ -41,6 +41,12 @@ describe.skipIf(!rpcUrl || !apiKey)('Sepolia (live, read-only)', () => {
     expect(await reader.getTokenBalance(SEPOLIA_USDC, SEPOLIA_USDC)).toBeGreaterThanOrEqual(0n)
   }, 30_000)
 
+  it('reads EIP-1559 fee data (Phase 8b)', async () => {
+    const fees = await reader.getFeeData()
+    expect(fees.baseFeePerGas).toBeGreaterThan(0n)
+    expect(fees.maxPriorityFeePerGas).toBeGreaterThanOrEqual(0n)
+  })
+
   it('explorer key works: a fresh random address has no history', async () => {
     const fresh = getAddress(`0x${randomBytes(20).toString('hex')}`)
     expect(await explorer.getActivity(fresh)).toEqual({

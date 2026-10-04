@@ -46,3 +46,18 @@ export function displayFiat(value: string): string {
   if (v.abs().lt(0.01)) return v.toSignificantDigits(2).toFixed()
   return v.toFixed(2)
 }
+
+/** a − b, exact (may be negative). */
+export function subtractFiat(a: string, b: string): string {
+  return new D(a).minus(new D(b)).toFixed(FIAT_DECIMALS)
+}
+
+/** −1, 0 or 1 like a comparator: exact decimal comparison of two fiat strings. */
+export function compareFiat(a: string, b: string): -1 | 0 | 1 {
+  return new D(a).comparedTo(new D(b)) as -1 | 0 | 1
+}
+
+/** A non-negative decimal string (configuration values such as the minimum net value). */
+export function isFiatAmount(value: string): boolean {
+  return /^\d+(\.\d{1,8})?$/.test(value)
+}

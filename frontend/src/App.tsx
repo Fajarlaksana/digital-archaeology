@@ -14,6 +14,7 @@ import { LoginPage } from './pages/LoginPage'
 import { MfaPage } from './pages/MfaPage'
 import { NetworksPage } from './pages/NetworksPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
+import { RecoveryPage } from './pages/RecoveryPage'
 import { ScanDetailPage } from './pages/ScanDetailPage'
 import { ScansPage } from './pages/ScansPage'
 import { UsersPage } from './pages/UsersPage'
@@ -26,6 +27,7 @@ const PAGES: Record<string, () => React.JSX.Element> = {
   '/key-vault': KeyVaultPage,
   '/authorizations': AuthorizationsPage,
   '/destinations': DestinationsPage,
+  '/recovery': RecoveryPage,
 }
 
 /** Direct URL access to a page the user may not see sends them home (the API denies it anyway). */

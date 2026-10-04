@@ -244,6 +244,21 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-0
 - **Batasan:** smart-contract wallet (Safe, EIP-1271) belum bisa dibuktikan. Satu destination berlaku untuk satu network; address yang sama di network EVM lain perlu destination (dan bukti) sendiri.
 - **Alternatif:** approval saja (ditolak pemilik projek: terlalu bergantung pada ketelitian REVIEWER), dua REVIEWER (ditunda; bisa ditambahkan untuk mainnet).
 
+## ADR-021 — Fee estimator & eligibility engine (Fase 8b)
+- **Status:** Accepted
+- **Tanggal:** 2026-10-04
+- **Konteks:** SA 4.7 + revisi 02-analysis §2.6. Pemilik projek memilih minimum bersih **$10** dan **tidak** mewajibkan status INACTIVE (eligibility hanya soal kelayakan operasional).
+- **Keputusan:**
+  1. **Aturan murni di `domain/eligibility.ts`**, diuji per cabang. Service hanya mengumpulkan input (saldo scan terakhir, harga terakhir, fee baru dari RPC, daftar key dari signer) lalu menyimpan hasil.
+  2. **Urutan aturan:** saldo basi → tanpa saldo → otorisasi (belum/kedaluwarsa) → destination approved di network itu → key di vault (signer tak terjangkau = `SIGNER_UNAVAILABLE`, tidak dianggap "tidak ada key") → per aset: harga → fee → ekonomi → gas. `NO_BALANCE` diperiksa sebelum otorisasi agar address kosong tidak mendorong verifikasi yang sia-sia. Token yang nilainya di bawah minimum adalah `NOT_ECONOMIC`, bukan `NEEDS_GAS_FUNDING`.
+  3. **Fee EIP-1559:** `maxFeePerGas = 2 × baseFee + priorityFee`, native = 21 000 gas (destination adalah EOA terbukti, ADR-020), token = `estimateContractGas(transfer)` ke destination approved, ditambah margin (default 20%), dibulatkan ke atas, semuanya bigint. Fee dibaca ulang setiap evaluasi dan **tidak** dipakai ulang untuk transaksi (Fase 9 menghitung ulang sebelum preview).
+  4. **Gas token dicadangkan dari saldo native** sebelum menilai sweep native, sehingga READY tidak menjanjikan nilai native yang sebenarnya dipakai untuk gas token. Jika gas hanya cukup untuk sebagian token, token berikutnya `NEEDS_GAS_FUNDING`.
+  5. **Status address = status aset terbaik** (READY > NOT_ECONOMIC > NOT_ELIGIBLE). Semua alasan disimpan (`recovery_reason`, dipisah koma, yang paling relevan dulu); rincian per aset di `asset_eligibility` (diganti tiap evaluasi). Address yang diarsipkan atau sedang dalam workflow recovery (`IN_PROGRESS`/`TRANSFERRED`) tidak disentuh.
+  6. **Kapan dinilai:** otomatis setelah scan selesai (hook `afterScan`, audit tanpa user), dan manual lewat **Hitung ulang** (`scans:run`, sama dengan memulai scan karena membaca chain). Perubahan otorisasi/destination/key tidak memicu evaluasi otomatis; UI menunjukkan kapan terakhir dinilai.
+  7. **Konfigurasi:** `RECOVERY_MIN_NET_VALUE` (decimal string, default 10), `FEE_MARGIN_PERCENT` (default 20), `ELIGIBILITY_BALANCE_MAX_AGE_HOURS` (default 36: scan harian + kelonggaran).
+  8. **READY hanya informasi** (aturan 5): tidak ada job yang membuat atau mengirim transaksi berdasarkan status ini.
+- **Batasan:** nilai testnet tetap SIMULASI (ADR-016). Estimasi gas token memakai destination approved pertama di network. Fee L2 (L1 data fee) belum dihitung, sehingga dianggap jaringan L1/Sepolia. Akurasi READY baru diverifikasi terhadap wallet testnet sungguhan bersama verifikasi live M1.
+
 ---
 
 ## Jawaban pertanyaan terbuka (02-analysis bagian 5)

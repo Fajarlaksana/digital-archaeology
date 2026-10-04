@@ -14,7 +14,7 @@ import {
   type ImportSummary,
 } from '../domain/address-import'
 import { sumFiat } from '../domain/valuation'
-import type { ActivityStatus } from '../generated/prisma/client'
+import type { ActivityStatus, RecoveryStatus } from '../generated/prisma/client'
 import type { AddressRepository, AddressWithNetwork } from '../repositories/address.repository'
 import type { AuditLogRepository } from '../repositories/audit-log.repository'
 import type { NetworkRepository } from '../repositories/network.repository'
@@ -33,6 +33,9 @@ export interface PublicAddress {
   balanceStatus: string
   authorizationStatus: string
   recoveryStatus: string
+  /** Eligibility reason codes (Phase 8b), most relevant first. */
+  recoveryReasons: string[]
+  eligibilityCheckedAt: string | null
   reviewFlag: boolean
   lastActivityAt: string | null
   inactiveDays: number | null
@@ -63,6 +66,8 @@ export function toPublicAddress(row: AddressWithNetwork, fiatCurrency: string): 
     balanceStatus: row.balanceStatus,
     authorizationStatus: row.authorizationStatus,
     recoveryStatus: row.recoveryStatus,
+    recoveryReasons: row.recoveryReason ? row.recoveryReason.split(',') : [],
+    eligibilityCheckedAt: row.eligibilityCheckedAt?.toISOString() ?? null,
     reviewFlag: row.reviewFlag,
     lastActivityAt: iso(row.lastActivityAt),
     inactiveDays: row.inactiveDays,
@@ -173,6 +178,7 @@ export function createAddressService({
     async list(query: {
       networkId?: string
       activityStatus?: ActivityStatus
+      recoveryStatus?: RecoveryStatus
       search?: string
       archived?: 'exclude' | 'include' | 'only'
       page: number
@@ -181,6 +187,7 @@ export function createAddressService({
       const { items, total } = await addresses.list({
         networkId: query.networkId,
         activityStatus: query.activityStatus,
+        recoveryStatus: query.recoveryStatus,
         search: query.search,
         includeArchived: query.archived === 'include',
         onlyArchived: query.archived === 'only',

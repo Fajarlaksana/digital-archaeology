@@ -217,6 +217,9 @@ CONFIRMATIONS_REQUIRED=3
 DOCUMENT_ENCRYPTION_KEY=
 SIGNER_URL=http://127.0.0.1:4000     # backend → signer (internal); http hanya ke loopback, selain itu https
 SIGNER_ALLOW_INSECURE_HTTP=false     # opt-out eksplisit untuk jaringan container privat (warning saat start)
+RECOVERY_MIN_NET_VALUE=10            # nilai bersih minimum (FIAT_CURRENCY) agar tidak NOT_ECONOMIC
+FEE_MARGIN_PERCENT=20                # margin di atas estimasi fee EIP-1559
+ELIGIBILITY_BALANCE_MAX_AGE_HOURS=36 # saldo lebih tua dari ini = STALE_BALANCE
 SIGNER_HMAC_SECRET=                  # sama di backend & signer
 
 # --- hanya di env service signer/ ---

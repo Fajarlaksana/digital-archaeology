@@ -187,10 +187,11 @@ model Asset {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  network        Network         @relation(fields: [networkId], references: [id])
+  network        Network            @relation(fields: [networkId], references: [id])
   balances       Balance[]
   priceSnapshots PriceSnapshot[]
   transactions   Transaction[]
+  eligibility    AssetEligibility[]
 
   @@unique([networkId, contractAddress])
   @@map("assets")
@@ -216,30 +217,33 @@ model PriceSnapshot {
 // ─────────────────────────── Addresses ───────────────────────────
 
 model Address {
-  id                  String              @id @default(uuid()) @db.Uuid
-  networkId           String              @map("network_id") @db.Uuid
+  id                   String              @id @default(uuid()) @db.Uuid
+  networkId            String              @map("network_id") @db.Uuid
   /// Stored in canonical form (EIP-55 checksum for EVM).
-  address             String
-  label               String?
+  address              String
+  label                String?
   /// Who the address belongs to / under which mandate. Required (CLAUDE.md rule 7).
-  ownerReference      String              @map("owner_reference")
-  activityStatus      ActivityStatus      @default(UNKNOWN) @map("activity_status")
-  balanceStatus       BalanceStatus       @default(UNKNOWN) @map("balance_status")
-  authorizationStatus AuthorizationStatus @default(UNVERIFIED) @map("authorization_status")
-  recoveryStatus      RecoveryStatus      @default(NONE) @map("recovery_status")
-  recoveryReason      String?             @map("recovery_reason")
-  reviewFlag          Boolean             @default(false) @map("review_flag")
-  reviewNote          String?             @map("review_note")
-  lastActivityAt      DateTime?           @map("last_activity_at")
-  lastIncomingAt      DateTime?           @map("last_incoming_at")
-  lastOutgoingAt      DateTime?           @map("last_outgoing_at")
-  inactiveDays        Int?                @map("inactive_days")
-  lastScannedAt       DateTime?           @map("last_scanned_at")
+  ownerReference       String              @map("owner_reference")
+  activityStatus       ActivityStatus      @default(UNKNOWN) @map("activity_status")
+  balanceStatus        BalanceStatus       @default(UNKNOWN) @map("balance_status")
+  authorizationStatus  AuthorizationStatus @default(UNVERIFIED) @map("authorization_status")
+  recoveryStatus       RecoveryStatus      @default(NONE) @map("recovery_status")
+  /// Comma-separated eligibility reasons (domain/eligibility.ts), most relevant first.
+  recoveryReason       String?             @map("recovery_reason")
+  /// When eligibility was last evaluated (Phase 8b).
+  eligibilityCheckedAt DateTime?           @map("eligibility_checked_at")
+  reviewFlag           Boolean             @default(false) @map("review_flag")
+  reviewNote           String?             @map("review_note")
+  lastActivityAt       DateTime?           @map("last_activity_at")
+  lastIncomingAt       DateTime?           @map("last_incoming_at")
+  lastOutgoingAt       DateTime?           @map("last_outgoing_at")
+  inactiveDays         Int?                @map("inactive_days")
+  lastScannedAt        DateTime?           @map("last_scanned_at")
   /// Archived addresses are hidden from lists and never scanned; history is kept (Phase 4).
-  archivedAt          DateTime?           @map("archived_at")
-  createdById         String?             @map("created_by") @db.Uuid
-  createdAt           DateTime            @default(now()) @map("created_at")
-  updatedAt           DateTime            @updatedAt @map("updated_at")
+  archivedAt           DateTime?           @map("archived_at")
+  createdById          String?             @map("created_by") @db.Uuid
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @updatedAt @map("updated_at")
 
   network        Network              @relation(fields: [networkId], references: [id])
   createdBy      User?                @relation("AddressCreatedBy", fields: [createdById], references: [id])
@@ -248,12 +252,40 @@ model Address {
   authorizations Authorization[]
   challenges     OwnershipChallenge[]
   transactions   Transaction[]
+  eligibility    AssetEligibility[]
 
   @@unique([networkId, address])
   @@index([activityStatus])
   @@index([recoveryStatus])
   @@index([archivedAt])
   @@map("addresses")
+}
+
+/// Latest eligibility result per held asset (Phase 8b). Replaced on every evaluation.
+/// Information only: nothing moves assets because of it (CLAUDE.md rule 5).
+model AssetEligibility {
+  id          String         @id @default(uuid()) @db.Uuid
+  addressId   String         @map("address_id") @db.Uuid
+  assetId     String         @map("asset_id") @db.Uuid
+  status      RecoveryStatus
+  reason      String?
+  /// Base units of the asset at evaluation time.
+  quantity    Decimal        @db.Decimal(78, 0)
+  /// Estimated transfer fee in NATIVE base units (incl. margin); null when unknown.
+  feeEstimate Decimal?       @map("fee_estimate") @db.Decimal(78, 0)
+  valueFiat   Decimal?       @map("value_fiat") @db.Decimal(38, 8)
+  feeFiat     Decimal?       @map("fee_fiat") @db.Decimal(38, 8)
+  netFiat     Decimal?       @map("net_fiat") @db.Decimal(38, 8)
+  /// Testnet values priced with mainnet prices (ADR-016).
+  simulated   Boolean
+  computedAt  DateTime       @map("computed_at")
+
+  address Address @relation(fields: [addressId], references: [id], onDelete: Cascade)
+  asset   Asset   @relation(fields: [assetId], references: [id])
+
+  @@unique([addressId, assetId])
+  @@index([status])
+  @@map("asset_eligibility")
 }
 
 model Balance {

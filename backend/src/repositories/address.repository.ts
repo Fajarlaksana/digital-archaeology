@@ -1,4 +1,4 @@
-import type { ActivityStatus, Address, Prisma } from '../generated/prisma/client'
+import type { ActivityStatus, Address, Prisma, RecoveryStatus } from '../generated/prisma/client'
 import type { Database } from '../lib/prisma'
 import { fromDbAmount, toDbAmount } from './amount'
 
@@ -27,6 +27,7 @@ export interface NewAddress {
 export interface AddressQuery {
   networkId?: string
   activityStatus?: ActivityStatus
+  recoveryStatus?: RecoveryStatus
   /** Case-insensitive match on address, label or owner reference. */
   search?: string
   includeArchived?: boolean
@@ -46,6 +47,7 @@ function whereFor(query: AddressQuery): Prisma.AddressWhereInput {
   return {
     networkId: query.networkId,
     activityStatus: query.activityStatus,
+    recoveryStatus: query.recoveryStatus,
     archivedAt: query.onlyArchived ? { not: null } : query.includeArchived ? undefined : null,
     ...(search
       ? {

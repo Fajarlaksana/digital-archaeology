@@ -118,3 +118,108 @@ export function createReportService(deps: {
 }
 
 export type ReportService = ReturnType<typeof createReportService>
+
+/** Eligibility report (Phase 8b, SA 21 item 5): one row per evaluated asset. */
+export const ELIGIBILITY_REPORT_HEADERS = [
+  'address',
+  'network',
+  'label',
+  'owner_reference',
+  'activity_status',
+  'authorization_status',
+  'recovery_status',
+  'recovery_reasons',
+  'asset',
+  'balance',
+  'balance_base_units',
+  'eligibility_status',
+  'eligibility_reason',
+  'fiat_currency',
+  'estimated_value',
+  'estimated_fee_native_base_units',
+  'estimated_fee_value',
+  'estimated_net_value',
+  'value_simulated',
+  'evaluated_at',
+] as const
+
+export function createEligibilityReport(deps: {
+  db: Database
+  audit: AuditLogRepository
+  fiatCurrency: string
+}) {
+  return {
+    async csv(actor: AuthContext, meta: RequestMeta) {
+      const addresses = await deps.db.address.findMany({
+        where: { archivedAt: null, eligibilityCheckedAt: { not: null } },
+        include: {
+          network: true,
+          eligibility: {
+            include: { asset: true },
+            orderBy: [{ asset: { isNative: 'desc' } }, { asset: { symbol: 'asc' } }],
+          },
+        },
+        orderBy: [{ network: { name: 'asc' } }, { recoveryStatus: 'asc' }, { address: 'asc' }],
+        take: MAX_REPORT_ADDRESSES,
+      })
+      const fixed = (d: { toFixed(n: number): string } | null) => d?.toFixed(8) ?? ''
+      const rows: unknown[][] = []
+      for (const a of addresses) {
+        const common = [
+          a.address,
+          a.network.name,
+          a.label ?? '',
+          a.ownerReference,
+          a.activityStatus,
+          a.authorizationStatus,
+          a.recoveryStatus,
+          a.recoveryReason ?? '',
+        ]
+        const evaluatedAt = a.eligibilityCheckedAt?.toISOString() ?? ''
+        if (a.eligibility.length === 0) {
+          rows.push([
+            ...common,
+            '',
+            '',
+            '',
+            '',
+            '',
+            deps.fiatCurrency,
+            '',
+            '',
+            '',
+            '',
+            '',
+            evaluatedAt,
+          ])
+          continue
+        }
+        for (const e of a.eligibility) {
+          const quantity = fromDbAmount(e.quantity)
+          rows.push([
+            ...common,
+            e.asset.symbol,
+            fromBaseUnit(quantity, e.asset.decimals),
+            quantity.toString(),
+            e.status,
+            e.reason ?? '',
+            deps.fiatCurrency,
+            fixed(e.valueFiat),
+            e.feeEstimate === null ? '' : fromDbAmount(e.feeEstimate).toString(),
+            fixed(e.feeFiat),
+            fixed(e.netFiat),
+            String(e.simulated),
+            e.computedAt.toISOString(),
+          ])
+        }
+      }
+      await recordAction(deps.audit, actor, meta, {
+        action: 'REPORT_EXPORTED',
+        resourceType: 'report',
+        resourceId: 'eligibility',
+        metadata: { addresses: addresses.length, rows: rows.length },
+      })
+      return toCsv(ELIGIBILITY_REPORT_HEADERS, rows)
+    },
+  }
+}
