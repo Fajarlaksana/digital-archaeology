@@ -15,6 +15,8 @@ const EXPIRY_REASONS: Record<string, string> = {
   BALANCE_INSUFFICIENT: 'Saldo tidak lagi cukup untuk jumlah + fee maksimum',
   DESTINATION_NOT_APPROVED: 'Destination tidak lagi berstatus APPROVED',
   AUTHORIZATION_INVALID: 'Otorisasi kepemilikan tidak lagi berlaku',
+  REVERTED: 'Transaksi masuk blok tetapi gagal dieksekusi (reverted)',
+  REPLACED_OR_DROPPED: 'Nonce sudah dipakai transaksi lain (diganti atau dibuang dari mempool)',
 }
 
 export function TransactionDetailPage() {
@@ -55,6 +57,18 @@ function Detail({ tx: t }: { tx: PublicTransaction }) {
   const isApprover = me !== null && approved?.decidedBy?.id === me.user.id
   const canSign = t.status === 'APPROVED' && can('transactions:sign') && !isCreator && !isApprover
   const [signed, setSigned] = useState<string | null>(null)
+
+  const canBroadcast = t.status === 'SIGNED' && can('transactions:broadcast')
+  const [confirmBroadcast, setConfirmBroadcast] = useState(false)
+  const broadcast = () =>
+    sensitive.run(async () => {
+      try {
+        await transactionsApi.broadcast(t.id)
+        setConfirmBroadcast(false)
+      } finally {
+        await refresh()
+      }
+    })
 
   // Only the id goes to the server; the signed raw tx never comes back to the browser.
   const sign = () =>
@@ -208,6 +222,9 @@ function Detail({ tx: t }: { tx: PublicTransaction }) {
           </>
         )}
         {canSign && <Button onClick={() => void sign()}>Sign</Button>}
+        {canBroadcast && !confirmBroadcast && (
+          <Button onClick={() => setConfirmBroadcast(true)}>Broadcast</Button>
+        )}
         {(t.status === 'CREATED' || t.status === 'APPROVED') && can('transactions:create') && (
           <Button variant="secondary" onClick={() => setAction('cancel')}>
             Batalkan
@@ -219,6 +236,67 @@ function Detail({ tx: t }: { tx: PublicTransaction }) {
           Anda membuat atau meng-approve transaksi ini, jadi tanda tangan harus dari SUPER_ADMIN
           lain.
         </p>
+      )}
+      {confirmBroadcast && (
+        <div
+          role="alertdialog"
+          aria-label="Konfirmasi broadcast"
+          className="mt-3 space-y-2 rounded-md border-2 border-red-300 bg-red-50 p-3 text-sm"
+        >
+          <p className="font-semibold text-red-900">
+            Kirim {t.amountFormatted} {t.asset.symbol} ke {t.destination.label} di{' '}
+            {t.network.displayName}?
+          </p>
+          <p className="text-red-900">
+            Setelah dikirim, transaksi tidak bisa dibatalkan dari sistem ini.
+          </p>
+          <div className="flex gap-2">
+            <Button onClick={() => void broadcast()}>Ya, broadcast sekarang</Button>
+            <Button variant="secondary" onClick={() => setConfirmBroadcast(false)}>
+              Kembali
+            </Button>
+          </div>
+        </div>
+      )}
+      {['BROADCASTED', 'PENDING', 'CONFIRMED', 'FAILED'].includes(t.status) && (
+        <section
+          aria-label="Status jaringan"
+          className="mt-4 rounded-lg border border-slate-200 bg-white p-4 text-sm"
+        >
+          <h2 className="font-semibold">Status jaringan</h2>
+          {t.stuck && (
+            <p role="alert" className="mt-2 rounded-md bg-red-50 px-3 py-2 text-red-800">
+              STUCK: belum masuk blok sejak{' '}
+              {t.broadcastAt && new Date(t.broadcastAt).toLocaleString('id-ID')}. Sistem tetap
+              memantau. Lihat runbook untuk speed-up/cancel manual.
+            </p>
+          )}
+          <dl className="mt-2">
+            <Row label="Konfirmasi">
+              {t.confirmations} / {t.requiredConfirmations}
+            </Row>
+            <Row label="Blok">{t.blockNumber ?? '—'}</Row>
+            <Row label="Fee aktual">
+              {t.feePaidFormatted ? `${t.feePaidFormatted} ${t.nativeSymbol}` : '—'}
+            </Row>
+            <Row label="Dikirim">
+              {t.broadcastAt ? new Date(t.broadcastAt).toLocaleString('id-ID') : '—'}
+            </Row>
+            {t.confirmedAt && (
+              <Row label="Terkonfirmasi">{new Date(t.confirmedAt).toLocaleString('id-ID')}</Row>
+            )}
+          </dl>
+          {t.explorerTxUrl && (
+            <a
+              href={t.explorerTxUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="mt-2 inline-block underline"
+            >
+              Lihat di explorer ↗
+            </a>
+          )}
+        </section>
       )}
       {(signed ?? t.txHash) && (
         <p

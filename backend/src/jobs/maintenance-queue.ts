@@ -6,13 +6,15 @@ import type { ScheduleInfo } from '../services/dashboard.service'
 const QUEUE_NAME = 'maintenance'
 const PRICES = 'update-prices'
 const SCANS = 'scheduled-scans'
+const PENDING_TX = 'check-pending-transactions'
 
 /**
  * Recurring system jobs (Phase 6), driven by BullMQ job schedulers so that only one run happens
  * even with several backend instances:
  *  - update-prices: every N minutes
  *  - scheduled-scans: cron (default daily 02:00), "off" disables
- * Scheduled scans only READ the chain; nothing ever moves assets automatically (CLAUDE.md rule 5).
+ *  - check-pending-transactions (Phase 11): every N seconds, follows broadcast transactions
+ * These jobs only READ the chain; nothing ever moves assets automatically (CLAUDE.md rule 5).
  */
 export function createMaintenanceQueue(options: {
   redisUrl: string
@@ -22,6 +24,8 @@ export function createMaintenanceQueue(options: {
   timezone: string
   updatePrices: () => Promise<unknown>
   startScheduledScans: () => Promise<unknown>
+  txCheckIntervalSeconds: number
+  checkPendingTransactions: () => Promise<unknown>
 }) {
   const connection = () => new Redis(options.redisUrl, { maxRetriesPerRequest: null })
   const queue = new Queue(QUEUE_NAME, {
@@ -33,6 +37,7 @@ export function createMaintenanceQueue(options: {
     async (job) => {
       if (job.name === PRICES) return options.updatePrices()
       if (job.name === SCANS) return options.startScheduledScans()
+      if (job.name === PENDING_TX) return options.checkPendingTransactions()
       options.logger.warn({ name: job.name }, 'UNKNOWN_MAINTENANCE_JOB')
       return undefined
     },
@@ -51,6 +56,11 @@ export function createMaintenanceQueue(options: {
         PRICES,
         { every: options.priceIntervalMinutes * 60_000 },
         { name: PRICES },
+      )
+      await queue.upsertJobScheduler(
+        PENDING_TX,
+        { every: options.txCheckIntervalSeconds * 1000 },
+        { name: PENDING_TX },
       )
       if (scansEnabled) {
         await queue.upsertJobScheduler(

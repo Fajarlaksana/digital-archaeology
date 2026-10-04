@@ -69,6 +69,12 @@ const envSchema = z
     // --- Transactions (Phase 9) ---
     /** An approval stays valid this long; then the transaction must be previewed again. */
     APPROVAL_TTL_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
+    /** Phase 11: blocks (incl. the inclusion block) before a transaction is CONFIRMED. */
+    TX_CONFIRMATIONS: z.coerce.number().int().min(1).max(100).default(3),
+    /** How often CHECK_PENDING_TRANSACTIONS runs. */
+    TX_CHECK_INTERVAL_SECONDS: z.coerce.number().int().min(10).max(600).default(30),
+    /** Without a receipt for this long, a broadcast transaction is flagged STUCK. */
+    TX_STUCK_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
 
     // --- Signer / key vault (Phase 7) ---
     /**

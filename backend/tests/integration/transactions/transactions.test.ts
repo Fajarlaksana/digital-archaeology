@@ -7,6 +7,7 @@ import {
   recoverTransactionAddress,
 } from 'viem'
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vitest'
+import { AppError } from '@da/shared'
 import { Prisma, type Role } from '../../../src/generated/prisma/client'
 import { createPrismaClient, type Database } from '../../../src/lib/prisma'
 import { createHarness, PASSWORD, type Harness } from '../auth/harness'
@@ -592,6 +593,204 @@ describe.skipIf(!testDatabaseUrl)('transaction preview & approval', () => {
       await expect(
         db.transaction.update({ where: { id: tx.id }, data: { signedPayload: '0x02ab' } }),
       ).rejects.toThrow(/immutable/)
+    })
+  })
+
+  describe('broadcast & confirmation (Phase 11)', () => {
+    /** Preview → approve → sign by three different people; returns the SIGNED transaction. */
+    async function signed() {
+      const { creatorToken, s, tx } = await previewed()
+      // The DB is shared by the whole run: only this test's network is reachable on this chain,
+      // so checkInFlight never touches transactions left by other tests.
+      h.chain.restrictTo([s.network.id])
+      const { token: reviewerToken } = await userWith(['REVIEWER'])
+      await h.call('POST', `/api/transactions/${tx.id}/approve`, reviewerToken, {
+        reason: 'Checked',
+      })
+      const { user: superAdmin, token } = await userWith(['SUPER_ADMIN'])
+      const res = await h.call('POST', `/api/transactions/${tx.id}/sign`, token, {})
+      expect(res.statusCode).toBe(200)
+      return { creatorToken, s, tx: res.json().transaction, superAdmin, token }
+    }
+    const broadcast = (id: string, token: string) =>
+      h.call('POST', `/api/transactions/${id}/broadcast`, token, {})
+    const receipt = (blockNumber: bigint, status: 'success' | 'reverted' = 'success') => ({
+      status,
+      blockNumber,
+      gasUsed: 21_000n,
+      effectiveGasPrice: 12n * GWEI,
+    })
+
+    it.each(['ADMIN', 'ANALYST', 'REVIEWER', 'AUDITOR'] as const)(
+      '%s → broadcast 403',
+      async (role) => {
+        h = await createHarness(db)
+        const { tx } = await signed()
+        const { token } = await userWith([role])
+        expect((await broadcast(tx.id, token)).statusCode).toBe(403)
+        expect(h.chain.sent).toEqual([])
+      },
+    )
+
+    it('sends exactly the signed raw transaction once, and refuses anything not SIGNED', async () => {
+      h = await createHarness(db)
+      const { tx, token, superAdmin } = await signed()
+      const res = await broadcast(tx.id, token)
+      expect(res.statusCode).toBe(200)
+      expect(res.json().transaction).toMatchObject({ status: 'BROADCASTED', txHash: tx.txHash })
+      const stored = await db.transaction.findUniqueOrThrow({ where: { id: tx.id } })
+      expect(h.chain.sent).toEqual([stored.signedPayload])
+      expect(stored.broadcastAt).not.toBeNull()
+      expect(
+        await db.auditLog.count({ where: { userId: superAdmin.id, action: 'TX_BROADCASTED' } }),
+      ).toBe(1)
+      expect((await broadcast(tx.id, token)).statusCode).toBe(409) // already broadcast
+      expect(h.chain.sent).toHaveLength(1)
+
+      h.chain.restrictTo(null)
+      const { tx: created } = await previewed()
+      expect((await broadcast(created.id, token)).statusCode).toBe(409)
+    })
+
+    it('expires instead of sending when the nonce moved since signing', async () => {
+      h = await createHarness(db)
+      const { tx, token } = await signed()
+      h.chain.set(TEST_ADDRESS, { nonce: 8, native: ETH, activity: NO_ACTIVITY })
+      const res = await broadcast(tx.id, token)
+      expect(res.json().error.code).toBe('TRANSACTION_EXPIRED')
+      expect(h.chain.sent).toEqual([])
+      expect(await db.transaction.findUniqueOrThrow({ where: { id: tx.id } })).toMatchObject({
+        status: 'EXPIRED',
+        statusReason: 'NONCE_CHANGED',
+      })
+    })
+
+    it('a node rejection keeps the transaction SIGNED and is audited', async () => {
+      h = await createHarness(db)
+      const { tx, token, superAdmin } = await signed()
+      h.chain.setSendFailure(
+        new AppError('TRANSACTION_FAILED', 'The node rejected the transaction: fee too low'),
+      )
+      const res = await broadcast(tx.id, token)
+      expect(res.statusCode).toBe(502)
+      expect((await db.transaction.findUniqueOrThrow({ where: { id: tx.id } })).status).toBe(
+        'SIGNED',
+      )
+      expect(
+        await db.auditLog.count({
+          where: { userId: superAdmin.id, action: 'TX_BROADCAST_FAILED' },
+        }),
+      ).toBe(1)
+    })
+
+    it('PENDING → CONFIRMED after 3 blocks; the address becomes TRANSFERRED with fresh balances', async () => {
+      h = await createHarness(db)
+      const { tx, token, s } = await signed()
+      await db.network.update({
+        where: { id: s.network.id },
+        data: { explorerUrl: 'https://sepolia.etherscan.io/' },
+      })
+      await broadcast(tx.id, token)
+      h.chain.setReceipt(tx.txHash, receipt(200n))
+      h.chain.setBlockNumber(201n)
+      await h.services.transactions.checkInFlight()
+      expect(await db.transaction.findUniqueOrThrow({ where: { id: tx.id } })).toMatchObject({
+        status: 'PENDING',
+        confirmations: 2,
+      })
+
+      // The sweep went through: only dust is left on the source address.
+      h.chain.set(TEST_ADDRESS, { nonce: 8, native: 1234n, activity: NO_ACTIVITY })
+      h.chain.setBlockNumber(202n)
+      const summary = await h.services.transactions.checkInFlight()
+      expect(summary).toMatchObject({ confirmed: 1, failed: 0, stuck: 0 })
+      const stored = await db.transaction.findUniqueOrThrow({ where: { id: tx.id } })
+      expect(stored).toMatchObject({ status: 'CONFIRMED', confirmations: 3, blockNumber: 200n })
+      expect(stored.feePaid?.toFixed()).toBe((21_000n * 12n * GWEI).toString())
+      expect(stored.confirmedAt).not.toBeNull()
+      expect(
+        (await db.address.findUniqueOrThrow({ where: { id: s.address.id } })).recoveryStatus,
+      ).toBe('TRANSFERRED')
+      const balance = await db.balance.findFirstOrThrow({
+        where: { addressId: s.address.id, assetId: s.eth.id },
+      })
+      expect(balance.quantity.toFixed()).toBe('1234')
+      expect(
+        await db.auditLog.count({ where: { resourceId: tx.id, action: 'TX_CONFIRMED' } }),
+      ).toBe(1)
+
+      const { token: auditor } = await userWith(['AUDITOR'])
+      const pub = (await h.call('GET', `/api/transactions/${tx.id}`, auditor)).json().transaction
+      expect(pub).toMatchObject({
+        status: 'CONFIRMED',
+        confirmations: 3,
+        requiredConfirmations: 3,
+        blockNumber: '200',
+        feePaidFormatted: '0.000252',
+        explorerTxUrl: `https://sepolia.etherscan.io/tx/${tx.txHash}`,
+      })
+      expect(JSON.stringify(pub)).not.toContain('"signedPayload"')
+    })
+
+    it('FAILED when reverted or replaced; the address is free again', async () => {
+      h = await createHarness(db)
+      const first = await signed()
+      await broadcast(first.tx.id, first.token)
+      h.chain.setReceipt(first.tx.txHash, receipt(300n, 'reverted'))
+      h.chain.setBlockNumber(300n)
+      await h.services.transactions.checkInFlight()
+      expect(await db.transaction.findUniqueOrThrow({ where: { id: first.tx.id } })).toMatchObject({
+        status: 'FAILED',
+        failureReason: 'REVERTED',
+        statusReason: 'REVERTED',
+      })
+      expect(
+        (await db.address.findUniqueOrThrow({ where: { id: first.s.address.id } })).recoveryStatus,
+      ).toBe('NONE')
+
+      h = await createHarness(db)
+      const second = await signed()
+      await broadcast(second.tx.id, second.token)
+      h.chain.set(TEST_ADDRESS, { nonce: 8, native: ETH, activity: NO_ACTIVITY })
+      await h.services.transactions.checkInFlight()
+      expect(
+        (await db.transaction.findUniqueOrThrow({ where: { id: second.tx.id } })).failureReason,
+      ).toBe('REPLACED_OR_DROPPED')
+    })
+
+    it('flags STUCK after 30 minutes without a receipt (audited once), without failing it', async () => {
+      h = await createHarness(db)
+      const { tx, token } = await signed()
+      await broadcast(tx.id, token)
+      h.advance(31 * 60_000)
+      await h.services.transactions.checkInFlight()
+      await h.services.transactions.checkInFlight()
+      const stored = await db.transaction.findUniqueOrThrow({ where: { id: tx.id } })
+      expect(stored.status).toBe('BROADCASTED')
+      expect(stored.stuckSince).not.toBeNull()
+      expect(await db.auditLog.count({ where: { resourceId: tx.id, action: 'TX_STUCK' } })).toBe(1)
+      const { token: auditor } = await userWith(['AUDITOR'])
+      expect(
+        (await h.call('GET', `/api/transactions/${tx.id}`, auditor)).json().transaction.stuck,
+      ).toBe(true)
+    })
+
+    it('database guards: no BROADCASTED without a time, no CONFIRMED without a block', async () => {
+      h = await createHarness(db)
+      const { tx } = await signed()
+      await expect(
+        db.transaction.update({ where: { id: tx.id }, data: { status: 'BROADCASTED' } }),
+      ).rejects.toThrow(/transactions_broadcast_recorded/)
+      await db.transaction.update({
+        where: { id: tx.id },
+        data: { status: 'BROADCASTED', broadcastAt: new Date() },
+      })
+      await expect(
+        db.transaction.update({
+          where: { id: tx.id },
+          data: { status: 'CONFIRMED', confirmations: 3 },
+        }),
+      ).rejects.toThrow(/transactions_confirmed_recorded/)
     })
   })
 

@@ -287,6 +287,19 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-0
   7. **Raw signed tx tidak dikirim ke browser** (API hanya `txHash`) dan tidak masuk log/audit.
 - **Batasan:** signer mempercayai `actor` dari backend (backend yang dibobol bisa mengaku sebagai SUPER_ADMIN lain, tetapi tetap butuh vault yang terbuka + tx yang benar-benar di-approve di DB). User dengan akses tulis ke DB aplikasi (`da`) secara teori bisa membuat baris approval palsu; trigger membatasi bentuknya, dan mitigasi penuh (approval bertanda tangan kriptografis) dicatat untuk pasca-MVP. Alur offline (export unsigned / import signed) ditunda.
 
+## ADR-024 — Broadcast & konfirmasi (Fase 11)
+- **Status:** Accepted
+- **Tanggal:** 2026-10-05
+- **Konteks:** roadmap Fase 11 + P11. Pemilik projek memilih: **3 konfirmasi**, broadcast **manual** oleh SUPER_ADMIN (terpisah dari sign), tx tanpa receipt **ditandai STUCK** (tidak otomatis gagal).
+- **Keputusan:**
+  1. **Broadcast = langkah manusia terakhir.** `POST /api/transactions/:id/broadcast` (`transactions:broadcast`, konfirmasi ulang ≤ 5 menit, dialog konfirmasi di UI). Sebelum kirim: raw tx yang tersimpan diverifikasi ulang (`verifySignedTransfer`, hash = `tx_hash`), lalu nonce/fee cap/saldo dicek (jendela approval 30 menit tidak berlaku lagi setelah sign). Hash dari node wajib sama dengan `tx_hash`. "Already known" diperlakukan sukses (idempotent). Penolakan node (fee rendah, nonce too low, saldo) → tetap SIGNED + audit `TX_BROADCAST_FAILED`; pesan node tidak pernah diteruskan (bisa memuat URL RPC).
+  2. **Pelacakan murni** (`domain/confirmation.ts`): receipt sukses → PENDING sampai `TX_CONFIRMATIONS` blok (termasuk blok inklusi) → CONFIRMED; receipt reverted → FAILED `REVERTED`; tanpa receipt tetapi nonce address sudah melewati nonce tx → FAILED `REPLACED_OR_DROPPED`; tanpa receipt lebih dari `TX_STUCK_MINUTES` → `stuck_since` diisi (STUCK), status tidak berubah.
+  3. **Job `check-pending-transactions`** di antrean maintenance (BullMQ job scheduler, satu run walau banyak instance), tiap `TX_CHECK_INTERVAL_SECONDS`. Hanya membaca chain.
+  4. **Setelah CONFIRMED:** address `TRANSFERRED`; saldo semua aset address dibaca ulang dari RPC dan dinilai ulang. FAILED mengembalikan address ke `NONE` agar bisa dicoba lagi. Fee aktual (`gas_used × effective_gas_price`) disimpan.
+  5. **Guard DB:** `broadcast_at` wajib sejak BROADCASTED; CONFIRMED wajib `confirmed_at`, `block_number`, `confirmations > 0`; angka chain tidak negatif.
+  6. **Raw signed tx tetap tidak pernah ke browser**; UI menampilkan hash + link explorer (`<explorer>/tx/<hash>`).
+- **Batasan:** reorg dalam yang menghapus receipt setelah PENDING tidak dimodelkan (status tetap PENDING sampai receipt muncul lagi). Deteksi `REPLACED_OR_DROPPED` mengandalkan konsistensi RPC antara nonce dan receipt; jika RPC tertinggal, tx yang sebenarnya sukses bisa salah ditandai — cek explorer bila ragu. Address `TRANSFERRED` dilewati eligibility (ADR-021): aset sisa (mis. native setelah token) di-preview langsung dari Address Detail. Speed-up/cancel tx STUCK belum ada di sistem (manual, runbook Fase 14).
+
 ---
 
 ## Jawaban pertanyaan terbuka (02-analysis bagian 5)

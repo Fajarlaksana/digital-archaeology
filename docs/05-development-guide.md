@@ -222,6 +222,9 @@ RECOVERY_MIN_NET_VALUE=10            # nilai bersih minimum (FIAT_CURRENCY) agar
 FEE_MARGIN_PERCENT=20                # margin di atas estimasi fee EIP-1559
 ELIGIBILITY_BALANCE_MAX_AGE_HOURS=36 # saldo lebih tua dari ini = STALE_BALANCE
 APPROVAL_TTL_MINUTES=30              # approval transaksi berlaku selama ini, lalu EXPIRED
+TX_CONFIRMATIONS=3                   # blok sebelum CONFIRMED
+TX_CHECK_INTERVAL_SECONDS=30         # interval job CHECK_PENDING_TRANSACTIONS
+TX_STUCK_MINUTES=30                  # tanpa receipt selama ini = STUCK (tidak otomatis gagal)
 SIGNER_HMAC_SECRET=                  # sama di backend & signer
 
 # --- hanya di env service signer/ ---

@@ -94,6 +94,21 @@ export function registerTransactionRoutes(
     }),
   )
 
+  // SUPER_ADMIN only; sends the already signed + verified transaction (ADR-024).
+  app.post(
+    '/api/transactions/:id/broadcast',
+    {
+      config: { skipGenericAudit: true },
+      preHandler: [
+        guards.permission('transactions:broadcast'),
+        guards.recentAuth(TRANSACTION_REAUTH_WINDOW_MS),
+      ],
+    },
+    async (request) => ({
+      transaction: await transactions.broadcast(ctx(request), id(request), requestMeta(request)),
+    }),
+  )
+
   app.post('/api/transactions/:id/reject', decide, async (request) => ({
     transaction: await transactions.reject(
       ctx(request),

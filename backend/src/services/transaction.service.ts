@@ -2,6 +2,7 @@ import { AppError, type Logger } from '@da/shared'
 import { chainAdapterFor } from '../chains'
 import type { ChainClientFactory } from '../chains/clients'
 import type { ChainReader } from '../chains/types'
+import { evaluateConfirmation } from '../domain/confirmation'
 import { fromBaseUnit, toBaseUnit } from '../domain/money'
 import { checkStillValid, planTransfer, type PlanError } from '../domain/transfer-plan'
 import { fiatValue } from '../domain/valuation'
@@ -58,6 +59,19 @@ export interface PublicTransaction {
   unsignedPayload: unknown
   /** Hash of the signed transaction (Phase 10). The signed raw tx itself is never returned. */
   txHash: string | null
+  /** Phase 11: chain progress. */
+  explorerTxUrl: string | null
+  broadcastAt: string | null
+  confirmations: number
+  requiredConfirmations: number
+  blockNumber: string | null
+  /** Actual fee paid once mined (native base units + formatted). */
+  feePaid: string | null
+  feePaidFormatted: string | null
+  confirmedAt: string | null
+  failureReason: string | null
+  /** No receipt for longer than the STUCK threshold (ADR-024). */
+  stuck: boolean
   createdBy: Person
   createdAt: string
   approvals: Array<{
@@ -107,6 +121,12 @@ export function createTransactionService(deps: {
   feeMarginPercent: number
   approvalTtlMs: number
   networkMode: 'testnet' | 'mainnet'
+  /** Blocks on top of (and including) the inclusion block before CONFIRMED (default 3). */
+  requiredConfirmations: number
+  /** Without a receipt for this long, a broadcast transaction is flagged STUCK. */
+  stuckAfterMs: number
+  /** After CONFIRMED (e.g. refresh the address's balances). Errors are logged, not thrown. */
+  afterConfirmed?: (t: { addressId: string; networkId: string }) => Promise<void>
   now: () => Date
 }) {
   const { transactions, audit, now } = deps
@@ -155,6 +175,22 @@ export function createTransactionService(deps: {
       unsignedHash: t.unsignedHash,
       unsignedPayload: t.unsignedPayload,
       txHash: t.txHash,
+      explorerTxUrl:
+        t.txHash && t.address.network.explorerUrl
+          ? `${t.address.network.explorerUrl.replace(/\/$/, '')}/tx/${t.txHash}`
+          : null,
+      broadcastAt: t.broadcastAt?.toISOString() ?? null,
+      confirmations: t.confirmations,
+      requiredConfirmations: deps.requiredConfirmations,
+      blockNumber: t.blockNumber?.toString() ?? null,
+      feePaid: fromDbAmountOrNull(t.feePaid)?.toString() ?? null,
+      feePaidFormatted:
+        t.feePaid === null || !native
+          ? null
+          : fromBaseUnit(fromDbAmount(t.feePaid), native.decimals),
+      confirmedAt: t.confirmedAt?.toISOString() ?? null,
+      failureReason: t.failureReason,
+      stuck: t.stuckSince !== null,
       createdBy: t.createdBy,
       createdAt: t.createdAt.toISOString(),
       approvals: t.approvals.map((a) => ({
@@ -222,8 +258,14 @@ export function createTransactionService(deps: {
     return reader
   }
 
-  /** Live re-check of a stored transaction (approval now; signing in Phase 10). */
-  async function invalidReason(t: TransactionWithContext): Promise<string | null> {
+  /**
+   * Live re-check of a stored transaction (approve, sign, broadcast). The approval window only
+   * applies until signing; a signed transaction is checked for nonce, fee cap and balance.
+   */
+  async function invalidReason(
+    t: TransactionWithContext,
+    opts: { approvalWindow: boolean } = { approvalWindow: true },
+  ): Promise<string | null> {
     const at = now()
     if (t.destination.status !== 'APPROVED') return 'DESTINATION_NOT_APPROVED'
     if (!authorizationValid(await transactions.verifiedAuthorizations(t.addressId), at)) {
@@ -253,7 +295,8 @@ export function createTransactionService(deps: {
         nativeBalance,
         assetBalance: t.asset.isNative ? nativeBalance : assetBalance,
       },
-      approvalExpiresAt: t.status === 'APPROVED' ? (approval?.expiresAt ?? null) : null,
+      approvalExpiresAt:
+        t.status === 'APPROVED' && opts.approvalWindow ? (approval?.expiresAt ?? null) : null,
       now: at,
     })
   }
@@ -572,7 +615,149 @@ export function createTransactionService(deps: {
       return toPublic(await getOrThrow(id))
     },
 
-    /** Live re-check of a stored transaction (also used before signing). */
+    /**
+     * SUPER_ADMIN sends a SIGNED transaction (Phase 11, ADR-024). The stored raw transaction is
+     * verified against the approval once more, the chain is re-checked (nonce, fee cap, balance),
+     * and the hash the node returns must be the one recorded at signing.
+     */
+    async broadcast(actor: AuthContext, id: string, meta: RequestMeta) {
+      const t = await getOrThrow(id)
+      if (t.status !== 'SIGNED' || !t.signedPayload || !t.txHash) {
+        throw new AppError('CONFLICT', 'Only SIGNED transactions can be broadcast')
+      }
+      const network = t.address.network
+      if (!network.isTestnet && deps.networkMode !== 'mainnet') {
+        throw new AppError('INVALID_NETWORK', 'Mainnet transactions need NETWORK_MODE=mainnet')
+      }
+      const serialized = (t.unsignedPayload as { serialized?: string } | null)?.serialized ?? ''
+      const verdict = await chainAdapterFor(network.chainType).verifySignedTransfer({
+        signed: t.signedPayload,
+        unsignedSerialized: serialized,
+        from: t.address.address,
+      })
+      if (!verdict.ok || verdict.txHash !== t.txHash) {
+        throw new AppError(
+          'TRANSACTION_FAILED',
+          'The stored signed transaction failed verification',
+        )
+      }
+      const invalid = await invalidReason(t, { approvalWindow: false })
+      if (invalid) {
+        await transactions.close(id, t.addressId, ['SIGNED'], 'EXPIRED', invalid)
+        await record(actor, meta, 'TRANSACTION_EXPIRED', t, { reason: invalid })
+        throw new AppError(
+          'TRANSACTION_EXPIRED',
+          `The signed transaction can no longer be sent (${invalid}) — create a new preview`,
+          { resourceId: id },
+        )
+      }
+
+      const reader = await readerFor(network)
+      let sentHash: string
+      try {
+        sentHash = (await reader.sendRawTransaction(t.signedPayload)).toLowerCase()
+      } catch (error) {
+        const code = error instanceof AppError ? error.code : 'TRANSACTION_FAILED'
+        await audit.create({
+          action: 'TX_BROADCAST_FAILED',
+          result: 'FAILURE',
+          userId: actor.user.id,
+          resourceType: 'transaction',
+          resourceId: id,
+          ipAddress: meta.ip,
+          userAgent: meta.userAgent,
+          requestId: meta.requestId,
+          metadata: { code, txHash: t.txHash },
+        })
+        throw error
+      }
+      if (sentHash !== t.txHash) {
+        deps.logger.error({ transactionId: id }, 'TX_BROADCAST_HASH_MISMATCH')
+        throw new AppError('TRANSACTION_FAILED', 'The node returned an unexpected transaction hash')
+      }
+      if (!(await transactions.markBroadcast(id, now()))) {
+        throw new AppError('CONFLICT', 'This transaction changed concurrently')
+      }
+      await record(actor, meta, 'TX_BROADCASTED', t, { txHash: t.txHash, network: network.name })
+      deps.logger.info({ transactionId: id, txHash: t.txHash }, 'TX_BROADCASTED')
+      return toPublic(await getOrThrow(id))
+    },
+
+    /**
+     * CHECK_PENDING_TRANSACTIONS (ADR-024): moves broadcast transactions to PENDING / CONFIRMED /
+     * FAILED from receipts, flags STUCK ones. Read-only towards the chain.
+     */
+    async checkInFlight() {
+      const summary = { checked: 0, confirmed: 0, failed: 0, stuck: 0, errors: 0 }
+      for (const t of await transactions.inFlight()) {
+        summary.checked++
+        try {
+          const reader = await readerFor(t.address.network)
+          const [receipt, currentBlock, latestNonce] = await Promise.all([
+            reader.getTransactionReceipt(t.txHash!),
+            reader.getBlockNumber(),
+            reader.getOutgoingNonce(t.address.address),
+          ])
+          const at = now()
+          const from = t.status as 'BROADCASTED' | 'PENDING'
+          const state = evaluateConfirmation({
+            current: from,
+            receipt,
+            currentBlock,
+            required: deps.requiredConfirmations,
+            latestNonce,
+            txNonce: t.nonce!,
+            broadcastAt: t.broadcastAt!,
+            now: at,
+            stuckAfterMs: deps.stuckAfterMs,
+          })
+          const newlyStuck = state.stuck && t.stuckSince === null
+          await transactions.track({
+            id: t.id,
+            addressId: t.addressId,
+            from,
+            status: state.status,
+            confirmations: state.confirmations,
+            blockNumber: receipt?.blockNumber ?? null,
+            gasUsed: receipt?.gasUsed ?? null,
+            feePaid: receipt ? receipt.gasUsed * receipt.effectiveGasPrice : null,
+            failureReason: state.failureReason,
+            stuckSince: state.stuck ? (t.stuckSince ?? at) : null,
+            at,
+          })
+          const meta = { txHash: t.txHash, confirmations: state.confirmations }
+          if (state.status === 'CONFIRMED') {
+            summary.confirmed++
+            await record(null, null, 'TX_CONFIRMED', t, {
+              ...meta,
+              blockNumber: receipt?.blockNumber.toString(),
+              feePaid: receipt ? (receipt.gasUsed * receipt.effectiveGasPrice).toString() : null,
+            })
+            await deps
+              .afterConfirmed?.({ addressId: t.addressId, networkId: t.networkId })
+              .catch((err: unknown) =>
+                deps.logger.error({ err, transactionId: t.id }, 'AFTER_CONFIRMED_FAILED'),
+              )
+          } else if (state.status === 'FAILED') {
+            summary.failed++
+            await record(null, null, 'TX_FAILED', t, { ...meta, reason: state.failureReason })
+          } else if (newlyStuck) {
+            summary.stuck++
+            await record(null, null, 'TX_STUCK', t, meta)
+            deps.logger.warn({ transactionId: t.id, txHash: t.txHash }, 'TX_STUCK')
+          }
+        } catch (err) {
+          summary.errors++
+          deps.logger.warn(
+            { transactionId: t.id, code: err instanceof AppError ? err.code : 'UNKNOWN' },
+            'TX_CHECK_FAILED',
+          )
+        }
+      }
+      return summary
+    },
+
+    /** Live re-check of a stored transaction. */
     invalidReason: async (id: string) => invalidReason(await getOrThrow(id)),
   }
 }

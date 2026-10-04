@@ -14,6 +14,10 @@ export function SigningPage() {
     queryFn: () => transactionsApi.list({ status: 'APPROVED' }),
   })
   const vault = useQuery({ queryKey: ['vault', 'status'], queryFn: vaultApi.status })
+  const toBroadcast = useQuery({
+    queryKey: [...TRANSACTIONS_KEY, 'list', 'SIGNED'],
+    queryFn: () => transactionsApi.list({ status: 'SIGNED' }),
+  })
 
   return (
     <section className="max-w-5xl">
@@ -67,6 +71,23 @@ export function SigningPage() {
           <li className="text-sm text-slate-500">
             Tidak ada transaksi yang menunggu tanda tangan.
           </li>
+        )}
+      </ul>
+      <h2 className="mt-6 font-semibold">Siap di-broadcast</h2>
+      <ul className="mt-2 space-y-2">
+        {toBroadcast.data?.map((t) => (
+          <li key={t.id} className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
+            <Link
+              to={`/transactions/${t.id}`}
+              className="font-medium underline-offset-2 hover:underline"
+            >
+              {t.amountFormatted} {t.asset.symbol} → {t.destination.label}
+            </Link>{' '}
+            <Badge tone="blue">{t.network.displayName}</Badge>
+          </li>
+        ))}
+        {toBroadcast.data?.length === 0 && (
+          <li className="text-sm text-slate-500">Tidak ada transaksi yang menunggu broadcast.</li>
         )}
       </ul>
     </section>

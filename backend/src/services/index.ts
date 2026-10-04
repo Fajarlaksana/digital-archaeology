@@ -59,6 +59,9 @@ export interface ServiceConfig {
   balanceMaxAgeMs?: number
   /** How long a transaction approval stays valid (default 30 min). */
   approvalTtlMs?: number
+  /** Phase 11: confirmations before CONFIRMED (default 3) and the STUCK threshold (30 min). */
+  txConfirmations?: number
+  txStuckMs?: number
 }
 
 /** Wires repositories and services. The single place where the dependency graph is built. */
@@ -147,6 +150,22 @@ export function createServices(db: Database, config: ServiceConfig) {
       feeMarginPercent: config.feeMarginPercent ?? 20,
       approvalTtlMs: config.approvalTtlMs ?? 30 * 60_000,
       networkMode: config.networkMode,
+      requiredConfirmations: config.txConfirmations ?? 3,
+      stuckAfterMs: config.txStuckMs ?? 30 * 60_000,
+      // After a confirmed transfer: re-read the address's balances right away and revalue them.
+      afterConfirmed: async ({ addressId, networkId }) => {
+        const network = await networks.findById(networkId)
+        const address = await addresses.findById(addressId)
+        if (!network || !address) return
+        const reader = config.clientsFor(network).reader
+        for (const asset of network.assets) {
+          const quantity = asset.isNative
+            ? await reader.getNativeBalance(address.address)
+            : await reader.getTokenBalance(address.address, asset.contractAddress!)
+          await addresses.upsertBalance(address.id, asset.id, quantity)
+        }
+        await valuation.revalueNetwork(networkId)
+      },
       now,
     }),
     eligibilityReport: createEligibilityReport({ db, audit, fiatCurrency }),

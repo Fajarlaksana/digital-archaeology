@@ -1,6 +1,7 @@
 import { AppError, type ErrorCode } from '@da/shared'
 import type { ChainClientFactory } from '../../src/chains/clients'
-import type { ActivitySummary, FeeData } from '../../src/chains/types'
+import { keccak256 } from 'viem'
+import type { ActivitySummary, FeeData, TransactionReceipt } from '../../src/chains/types'
 
 export interface FakeAccount {
   nonce: number
@@ -34,6 +35,10 @@ export function createFakeChain() {
     maxPriorityFeePerGas: 1_000_000_000n,
   }
   let tokenGas: bigint | Error = 50_000n
+  let blockNumber = 123n
+  const sent: string[] = []
+  const receipts = new Map<string, TransactionReceipt>()
+  let sendFailure: Error | null = null
 
   const account = (address: string): FakeAccount => {
     reads.push(address)
@@ -49,7 +54,7 @@ export function createFakeChain() {
     return {
       reader: {
         getChainId: async () => servedChainId ?? network.chainId ?? 0,
-        getBlockNumber: async () => 123n,
+        getBlockNumber: async () => blockNumber,
         getNativeBalance: async (a) => account(a).native,
         getTokenBalance: async (a, contract) => account(a).tokens?.[contract.toLowerCase()] ?? 0n,
         getOutgoingNonce: async (a) => account(a).nonce,
@@ -57,6 +62,12 @@ export function createFakeChain() {
           if (fees instanceof Error) throw fees
           return fees
         },
+        sendRawTransaction: async (signed) => {
+          if (sendFailure) throw sendFailure
+          sent.push(signed)
+          return keccak256(signed as `0x${string}`)
+        },
+        getTransactionReceipt: async (hash) => receipts.get(hash.toLowerCase()) ?? null,
         estimateTokenTransferGas: async () => {
           if (tokenGas instanceof Error) throw tokenGas
           return tokenGas
@@ -87,6 +98,19 @@ export function createFakeChain() {
     },
     setTokenGas(value: bigint | Error) {
       tokenGas = value
+    },
+    /** Raw transactions received through sendRawTransaction. */
+    sent,
+    setBlockNumber(value: bigint) {
+      blockNumber = value
+    },
+    /** Simulates mining: the receipt the node returns for `hash`. */
+    setReceipt(hash: string, receipt: TransactionReceipt | null) {
+      if (receipt) receipts.set(hash.toLowerCase(), receipt)
+      else receipts.delete(hash.toLowerCase())
+    },
+    setSendFailure(error: Error | null) {
+      sendFailure = error
     },
   }
 }

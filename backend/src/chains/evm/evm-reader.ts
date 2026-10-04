@@ -1,9 +1,12 @@
 import {
+  BaseError,
   createPublicClient,
   erc20Abi,
   http,
   HttpRequestError,
+  keccak256,
   TimeoutError,
+  TransactionReceiptNotFoundError,
   type Address,
   type Transport,
 } from 'viem'
@@ -77,6 +80,52 @@ export function createEvmReader(options: EvmReaderOptions): ChainReader {
         if (block.baseFeePerGas === null) throw new Error('Network does not support EIP-1559')
         return { baseFeePerGas: block.baseFeePerGas, maxPriorityFeePerGas }
       }),
+    sendRawTransaction: async (signed) => {
+      try {
+        return await client.sendRawTransaction({ serializedTransaction: signed as `0x${string}` })
+      } catch (error) {
+        // Classify by the node's message, but never echo it (it may quote the RPC URL).
+        const text = [
+          error instanceof BaseError ? error.details : '',
+          String((error as Error)?.message ?? ''),
+        ]
+          .join(' ')
+          .toLowerCase()
+        if (text.includes('already known') || text.includes('known transaction')) {
+          return keccak256(signed as `0x${string}`)
+        }
+        if (text.includes('nonce too low')) {
+          throw new AppError(
+            'TRANSACTION_FAILED',
+            'The node rejected the transaction: nonce too low',
+          )
+        }
+        if (text.includes('insufficient funds')) {
+          throw new AppError(
+            'INSUFFICIENT_BALANCE',
+            'The node rejected the transaction: insufficient funds',
+          )
+        }
+        if (text.includes('underpriced') || text.includes('fee cap')) {
+          throw new AppError('TRANSACTION_FAILED', 'The node rejected the transaction: fee too low')
+        }
+        throw rpcError(error, 'TRANSACTION_FAILED', 'broadcast')
+      }
+    },
+    getTransactionReceipt: async (hash) => {
+      try {
+        const r = await client.getTransactionReceipt({ hash: hash as `0x${string}` })
+        return {
+          status: r.status,
+          blockNumber: r.blockNumber,
+          gasUsed: r.gasUsed,
+          effectiveGasPrice: r.effectiveGasPrice,
+        }
+      } catch (error) {
+        if (error instanceof TransactionReceiptNotFoundError) return null
+        throw rpcError(error, 'RPC_TIMEOUT', 'transaction receipt')
+      }
+    },
     estimateTokenTransferGas: ({ from, token, to, amount }) =>
       call('token transfer gas', 'FEE_ESTIMATION_FAILED', () =>
         client.estimateContractGas({

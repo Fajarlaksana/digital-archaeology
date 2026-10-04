@@ -68,12 +68,26 @@ export interface ChainReader {
   /** Current EIP-1559 fee inputs (wei per gas). Recalculated before every use (docs/02 §2.6). */
   getFeeData(): Promise<FeeData>
   /** Gas needed for `from` to send `amount` of an ERC-20 token to `to`. */
+  /**
+   * Sends a signed raw transaction (eth_sendRawTransaction) and returns its hash.
+   * "Already known" counts as success (idempotent re-broadcast).
+   */
+  sendRawTransaction(signed: string): Promise<string>
+  /** null while the transaction is not (yet) in a block. */
+  getTransactionReceipt(hash: string): Promise<TransactionReceipt | null>
   estimateTokenTransferGas(input: {
     from: string
     token: string
     to: string
     amount: bigint
   }): Promise<bigint>
+}
+
+export interface TransactionReceipt {
+  status: 'success' | 'reverted'
+  blockNumber: bigint
+  gasUsed: bigint
+  effectiveGasPrice: bigint
 }
 
 export interface FeeData {

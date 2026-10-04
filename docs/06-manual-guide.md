@@ -329,8 +329,21 @@ Menu **Recovery** menampilkan status tiap address (pilih network dan status), le
 
 > Cara memastikan key tidak pernah ke browser: buka DevTools → Network, klik **Sign**, lalu periksa request `POST /api/transactions/<id>/sign`. Body-nya `{}` dan response-nya hanya berisi data transaksi + `txHash`, tanpa private key maupun raw signed transaction.
 
-### 11.4 Broadcast · *Fase 11*
-1. **Broadcast** (SUPER_ADMIN): klik **Broadcast**, lalu pantau status di **Transactions** sampai **CONFIRMED**.
+### 11.4 Broadcast & konfirmasi · *Fase 11* ✅ · SUPER_ADMIN
+1. Menu **Signing → Siap di-broadcast** (atau detail transaksi berstatus **SIGNED**): klik **Broadcast**, baca dialog konfirmasi (jumlah, tujuan, network), lalu **Ya, broadcast sekarang**. Konfirmasi ulang password + kode diminta bila perlu.
+2. Sebelum mengirim, sistem memverifikasi ulang tanda tangan dan memeriksa jaringan (nonce, fee, saldo). Jika berubah: **EXPIRED** → buat preview baru. Jika node menolak (mis. fee terlalu rendah), status tetap **SIGNED** dan pesan error tampil.
+3. Setelah terkirim, status bergerak otomatis (dicek tiap ±30 detik):
+
+| Status | Arti |
+|--------|------|
+| **BROADCASTED** | Terkirim, menunggu masuk blok |
+| **PENDING** | Sudah masuk blok, menunggu konfirmasi (x / 3) |
+| **CONFIRMED** | Selesai. Address menjadi **TRANSFERRED** dan saldonya diperbarui |
+| **FAILED** | *Reverted* (gagal dieksekusi) atau *nonce dipakai transaksi lain*; address bisa diproses ulang |
+| **STUCK** (penanda) | Lebih dari 30 menit tanpa masuk blok. Tetap dipantau, tidak otomatis gagal |
+
+4. Bagian **Status jaringan** di detail transaksi menampilkan konfirmasi, blok, **fee aktual**, dan **Lihat di explorer**.
+5. Setelah sweep, sisa debu kecil (fee maksimum − fee aktual) tertinggal di address sumber; itu wajar.
 
 **Saran:** untuk destination baru di mainnet, kirim jumlah kecil dulu sebagai uji coba.
 
@@ -350,7 +363,7 @@ AUDITOR sebaiknya rutin memeriksa aksi SUPER_ADMIN: `VAULT_UNLOCKED`, `KEY_IMPOR
 | Import key ditolak | Key tidak cocok dengan address mana pun di inventory | Cek address & derivation path, pastikan address sudah terdaftar |
 | Unlock gagal | Passphrase salah | Coba lagi dengan hati-hati, atau gunakan recovery passphrase (8.5) |
 | Approval kedaluwarsa | Fee/saldo berubah | Buat preview baru |
-| Tx lama PENDING | Fee terlalu rendah saat padat | Lihat runbook operasional (Fase 14) |
+| Tx ditandai STUCK | Fee terlalu rendah saat padat | Tunggu; bila perlu speed-up/cancel manual dari wallet dengan nonce yang sama. Sistem menandai FAILED (*replaced or dropped*) bila nonce dipakai tx lain. Lihat runbook (Fase 14) |
 
 ## 14. Runbook operasional · *Fase 14*
 

@@ -244,6 +244,73 @@ export function createTransactionRepository(db: Database) {
       return result.count === 1
     },
 
+    /** SIGNED → BROADCASTED once the node accepted the raw transaction. */
+    async markBroadcast(id: string, at: Date): Promise<boolean> {
+      const result = await db.transaction.updateMany({
+        where: { id, status: 'SIGNED' },
+        data: { status: 'BROADCASTED', broadcastAt: at, lastCheckedAt: at },
+      })
+      return result.count === 1
+    },
+
+    /** Transactions on their way to a block (checked by CHECK_PENDING_TRANSACTIONS). */
+    inFlight(): Promise<TransactionWithContext[]> {
+      return db.transaction.findMany({
+        where: { status: { in: ['BROADCASTED', 'PENDING'] } },
+        include: INCLUDE,
+        orderBy: { broadcastAt: 'asc' },
+      })
+    },
+
+    /**
+     * Records the latest chain view of a broadcast transaction. CONFIRMED marks the address
+     * TRANSFERRED; FAILED frees it for a new attempt. Conditional on the status it was read in.
+     */
+    async track(input: {
+      id: string
+      addressId: string
+      from: 'BROADCASTED' | 'PENDING'
+      status: 'BROADCASTED' | 'PENDING' | 'CONFIRMED' | 'FAILED'
+      confirmations: number
+      blockNumber: bigint | null
+      gasUsed: bigint | null
+      feePaid: bigint | null
+      failureReason: string | null
+      stuckSince: Date | null
+      at: Date
+    }): Promise<boolean> {
+      return db.$transaction(async (tx) => {
+        const result = await tx.transaction.updateMany({
+          where: { id: input.id, status: input.from },
+          data: {
+            status: input.status,
+            confirmations: input.confirmations,
+            blockNumber: input.blockNumber,
+            gasUsed: input.gasUsed === null ? null : toDbAmount(input.gasUsed),
+            feePaid: input.feePaid === null ? null : toDbAmount(input.feePaid),
+            failureReason: input.failureReason,
+            statusReason: input.failureReason,
+            stuckSince: input.stuckSince,
+            lastCheckedAt: input.at,
+            ...(input.status === 'CONFIRMED' ? { confirmedAt: input.at } : {}),
+          },
+        })
+        if (result.count !== 1) return false
+        if (input.status === 'CONFIRMED') {
+          await tx.address.update({
+            where: { id: input.addressId },
+            data: { recoveryStatus: 'TRANSFERRED', recoveryReason: null },
+          })
+        } else if (input.status === 'FAILED') {
+          await tx.address.updateMany({
+            where: { id: input.addressId, recoveryStatus: 'IN_PROGRESS' },
+            data: { recoveryStatus: 'NONE', recoveryReason: null, eligibilityCheckedAt: null },
+          })
+        }
+        return true
+      })
+    },
+
     close(
       id: string,
       addressId: string,

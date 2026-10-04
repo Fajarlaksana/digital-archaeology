@@ -594,6 +594,14 @@ model Transaction {
   signedPayload        String?           @map("signed_payload")
   txHash               String?           @unique @map("tx_hash")
   confirmations        Int               @default(0)
+  /// Block that included the transaction (Phase 11).
+  blockNumber          BigInt?           @map("block_number")
+  /// Actual cost once mined: gas used, and gas used × effective gas price (native base units).
+  gasUsed              Decimal?          @map("gas_used") @db.Decimal(78, 0)
+  feePaid              Decimal?          @map("fee_paid") @db.Decimal(78, 0)
+  lastCheckedAt        DateTime?         @map("last_checked_at")
+  /// Set while a broadcast transaction has no receipt for too long (shown as STUCK, ADR-024).
+  stuckSince           DateTime?         @map("stuck_since")
   failureReason        String?           @map("failure_reason")
   createdById          String            @map("created_by") @db.Uuid
   createdAt            DateTime          @default(now()) @map("created_at")

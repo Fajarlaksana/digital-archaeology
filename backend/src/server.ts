@@ -44,6 +44,8 @@ const services = createServices(db, {
   feeMarginPercent: env.FEE_MARGIN_PERCENT,
   balanceMaxAgeMs: env.ELIGIBILITY_BALANCE_MAX_AGE_HOURS * 3_600_000,
   approvalTtlMs: env.APPROVAL_TTL_MINUTES * 60_000,
+  txConfirmations: env.TX_CONFIRMATIONS,
+  txStuckMs: env.TX_STUCK_MINUTES * 60_000,
 })
 const scanQueue = createScanQueue({
   redisUrl: env.REDIS_URL,
@@ -58,6 +60,8 @@ const maintenance = createMaintenanceQueue({
   timezone: env.SCHEDULER_TIMEZONE,
   updatePrices: () => services.valuation.updatePrices(),
   startScheduledScans: () => services.scans.startScheduledScans(),
+  txCheckIntervalSeconds: env.TX_CHECK_INTERVAL_SECONDS,
+  checkPendingTransactions: () => services.transactions.checkInFlight(),
 })
 const app = await buildApp({ env, logger, checkDatabase: () => checkDatabase(db), services })
 

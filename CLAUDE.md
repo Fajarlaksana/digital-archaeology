@@ -37,6 +37,7 @@ Kebutuhan lengkap: `system_analysis_digital_archaeology.md`. Revisi & keputusan:
 - Eligibility hanya informasi: aturannya di `domain/eligibility.ts` (murni, diuji per cabang), fee dibaca ulang lewat `ChainReader.getFeeData` dan tidak pernah dipakai ulang untuk transaksi. Jangan pernah membuat job yang bertindak otomatis atas status READY (ADR-021).
 - Transaksi: yang di-approve dan ditandatangani adalah persis `unsigned_payload`/`unsigned_hash` hasil preview (immutable di DB). Bangun tx hanya lewat `ChainAdapter.buildUnsignedTransfer`, data live dari `ChainReader`, dan cek ulang `checkStillValid` sebelum setiap langkah berikutnya (ADR-022).
 - Signing: hanya `transaction_id` yang boleh sampai ke signer; signer memverifikasi approval sendiri lewat `da_signer_ro` (read-only), aturan 3 orang (pembuat ≠ approver ≠ penanda tangan), dan backend wajib menjalankan `verifySignedTransfer` sebelum menyimpan. Raw signed tx tidak pernah ke browser/log (ADR-023).
+- Broadcast hanya manual oleh SUPER_ADMIN setelah verifikasi ulang raw tx + cek nonce/fee/saldo; pelacakan konfirmasi lewat `domain/confirmation.ts` dan job `check-pending-transactions`. Tx tanpa receipt ditandai STUCK, tidak pernah otomatis FAILED karena waktu (ADR-024).
 - Nilai fiat: hitung hanya dengan `domain/valuation.ts` (decimal.js), simpan sebagai string/NUMERIC, dan tampilkan dengan `formatFiat` (tanpa `Number`). Nilai testnet wajib berlabel SIMULASI dan dijumlahkan terpisah (ADR-016).
 - Export CSV wajib lewat `lib/csv.ts` (proteksi formula injection).
 

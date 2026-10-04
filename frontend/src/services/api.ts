@@ -825,6 +825,17 @@ export interface PublicTransaction {
   unsignedPayload: Record<string, string | number> | null
   /** Hash of the signed transaction (Phase 10); the signed raw tx is never sent to the browser. */
   txHash: string | null
+  /** Phase 11: chain progress. */
+  explorerTxUrl: string | null
+  broadcastAt: string | null
+  confirmations: number
+  requiredConfirmations: number
+  blockNumber: string | null
+  feePaid: string | null
+  feePaidFormatted: string | null
+  confirmedAt: string | null
+  failureReason: string | null
+  stuck: boolean
   createdBy: { id: string; name: string } | null
   createdAt: string
   approvals: Array<{
@@ -871,6 +882,12 @@ export const transactionsApi = {
   approve: (id: string, reason: string) => transactionAction(id, 'approve', reason),
   reject: (id: string, reason: string) => transactionAction(id, 'reject', reason),
   cancel: (id: string, reason: string) => transactionAction(id, 'cancel', reason),
+  /** Sends the signed transaction to the network (Phase 11, SUPER_ADMIN). */
+  broadcast: (id: string) =>
+    apiFetch<{ transaction: PublicTransaction }>(`/api/transactions/${id}/broadcast`, {
+      method: 'POST',
+      body: {},
+    }).then((r) => r.transaction),
   /** Only the id is sent — the signer reads the approved payload itself (ADR-023). */
   sign: (id: string) =>
     apiFetch<{ transaction: PublicTransaction }>(`/api/transactions/${id}/sign`, {

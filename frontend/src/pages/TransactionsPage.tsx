@@ -22,7 +22,11 @@ const TONE: Record<TransactionStatus, 'green' | 'amber' | 'red' | 'slate' | 'blu
 export const STATUS_HINT: Partial<Record<TransactionStatus, string>> = {
   CREATED: 'Menunggu approval REVIEWER',
   APPROVED: 'Disetujui, menunggu tanda tangan SUPER_ADMIN',
-  SIGNED: 'Ditandatangani, menunggu broadcast (Fase 11)',
+  SIGNED: 'Ditandatangani, menunggu broadcast oleh SUPER_ADMIN',
+  BROADCASTED: 'Terkirim ke jaringan, menunggu masuk blok',
+  PENDING: 'Sudah masuk blok, menunggu konfirmasi',
+  CONFIRMED: 'Selesai: aset sudah dipindahkan',
+  FAILED: 'Gagal di jaringan',
   EXPIRED: 'Kedaluwarsa, buat preview baru',
 }
 
@@ -34,6 +38,10 @@ const FILTERS: TransactionStatus[] = [
   'CREATED',
   'APPROVED',
   'SIGNED',
+  'BROADCASTED',
+  'PENDING',
+  'CONFIRMED',
+  'FAILED',
   'REJECTED',
   'EXPIRED',
   'CANCELLED',
@@ -98,6 +106,11 @@ export function TransactionsPage() {
                 <td className="px-4 py-2">{t.network.displayName}</td>
                 <td className="px-4 py-2">
                   <TxStatusBadge status={t.status} />
+                  {t.stuck && (
+                    <span className="ml-1">
+                      <Badge tone="red">STUCK</Badge>
+                    </span>
+                  )}
                 </td>
               </tr>
             ))}

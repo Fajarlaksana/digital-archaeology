@@ -257,11 +257,13 @@ M4 Production     : F12 → F13 → F14
 
 ## Fase 11 — Broadcast & Confirmation · M
 
-- [ ] `POST /api/transactions/broadcast`, lalu simpan `tx_hash` dengan status `BROADCASTED`/`PENDING`
-- [ ] Job `CHECK_PENDING_TRANSACTIONS`: update konfirmasi, lalu `CONFIRMED`/`FAILED`
-- [ ] Update `recovery_status = TRANSFERRED` dan refresh saldo
-- [ ] Halaman Transactions + link ke explorer
-- [ ] **Uji end-to-end di Sepolia:** import address → scan → import key ke vault → verify → whitelist → eligibility → preview → approve → unlock vault & sign → broadcast → confirmed
+(ADR-024)
+- [x] `POST /api/transactions/:id/broadcast` (SUPER_ADMIN, konfirmasi ulang, dialog konfirmasi di UI): raw tx diverifikasi ulang terhadap approval, cek ulang nonce/fee cap/saldo (bisa `EXPIRED`), `eth_sendRawTransaction` lewat `ChainReader`, hash dari node wajib = `tx_hash`; "already known" = sukses (idempotent); penolakan node tetap `SIGNED` + audit `TX_BROADCAST_FAILED`
+- [x] Job `CHECK_PENDING_TRANSACTIONS` (BullMQ, tiap `TX_CHECK_INTERVAL_SECONDS` = 30): `PENDING` → `CONFIRMED` setelah `TX_CONFIRMATIONS` (3) blok; `FAILED` bila reverted atau nonce dipakai tx lain; **STUCK** (bukan gagal) setelah `TX_STUCK_MINUTES` (30) tanpa receipt; audit `TX_CONFIRMED`/`TX_FAILED`/`TX_STUCK`
+- [x] Setelah CONFIRMED: `recovery_status = TRANSFERRED`, saldo address dibaca ulang dari RPC + revaluasi; FAILED membebaskan address
+- [x] Halaman Transactions (filter status, badge STUCK) + detail: konfirmasi x/3, blok, fee aktual, link explorer; Signing page juga menampilkan antrean broadcast
+- [x] Guard DB: `broadcast_at` wajib sejak BROADCASTED, CONFIRMED wajib blok + waktu + konfirmasi > 0
+- [ ] **Uji end-to-end di Sepolia** (manual, pemilik projek): checklist lengkap di [08-e2e-sepolia.md](08-e2e-sepolia.md) — import address → scan → import key ke vault → verify → whitelist → eligibility → preview → approve → unlock vault & sign → broadcast → confirmed
 
 **DoD — Milestone M3 tercapai:** minimal 3 recovery end-to-end sukses di testnet dengan audit trail lengkap. Tag `v0.3.0-m3`.
 
@@ -313,6 +315,7 @@ M4 Production     : F12 → F13 → F14
 | 2026-10-01 | F0 | ADR-001/002/004–007 Accepted: TypeScript stack, EVM Sepolia, internal use, >3 operator |
 | 2026-10-01 | F1 | Monorepo + shared/backend/frontend, 49 test hijau. Pending: verifikasi Docker (Docker Desktop gagal start) |
 | 2026-10-02 | F1 | Docker Desktop (Hyper-V) hidup: `docker compose up -d` terverifikasi (port 5434), dev DB pindah ke Docker (ADR-013) |
+| 2026-10-05 | F11 | Broadcast + CHECK_PENDING_TRANSACTIONS (3 konfirmasi, FAILED reverted/replaced, STUCK), TRANSFERRED + refresh saldo, link explorer, checklist E2E Sepolia (docs/08); 680 test hijau |
 | 2026-10-05 | F10 | Signing via vault: signer memverifikasi approval sendiri lewat DB read-only, ECDSA dengan key Buffer, anti-equivocation nonce, Signed Tx Verifier, aturan 3 orang, halaman Signing; 659 test hijau |
 | 2026-10-05 | F9 | Preview tx EIP-1559 dari data live, approval maker-checker + kedaluwarsa otomatis (cap fee/nonce/saldo/30 menit), guard DB transaksi, halaman Transactions; 626 test hijau |
 | 2026-10-04 | F8b | Fee estimator EIP-1559 + eligibility engine (per aset, gas token dicadangkan), Recovery page, laporan CSV; 583 test hijau |
