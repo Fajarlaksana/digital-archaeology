@@ -43,6 +43,12 @@ export async function createHarness(
   const chain = options.chain ?? createFakeChain()
   const prices = options.prices ?? createFakePrices()
   const signer = options.signer ?? createFakeSigner()
+  // Like the real signer, the fake reads the approved transaction from the DB itself.
+  signer.setLoader(async (id) => {
+    const tx = await db.transaction.findUnique({ where: { id }, include: { address: true } })
+    const serialized = (tx?.unsignedPayload as { serialized?: string } | null)?.serialized
+    return tx && serialized ? { status: tx.status, address: tx.address.address, serialized } : null
+  })
   const enqueued: string[] = []
   const services = createServices(db, {
     mfaEncryptionKey: TEST_MFA_KEY,

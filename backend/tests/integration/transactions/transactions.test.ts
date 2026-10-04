@@ -1,5 +1,11 @@
 import { randomInt, randomUUID } from 'node:crypto'
-import { decodeFunctionData, erc20Abi, keccak256, parseTransaction } from 'viem'
+import {
+  decodeFunctionData,
+  erc20Abi,
+  keccak256,
+  parseTransaction,
+  recoverTransactionAddress,
+} from 'viem'
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vitest'
 import { Prisma, type Role } from '../../../src/generated/prisma/client'
 import { createPrismaClient, type Database } from '../../../src/lib/prisma'
@@ -432,6 +438,160 @@ describe.skipIf(!testDatabaseUrl)('transaction preview & approval', () => {
           })
         ).statusCode,
       ).toBe(409)
+    })
+  })
+
+  describe('signing (Phase 10)', () => {
+    /** Preview by ANALYST, approval by REVIEWER, and a third person holding SUPER_ADMIN. */
+    async function approved() {
+      const { creator, creatorToken, s, tx } = await previewed()
+      const { user: reviewer, token: reviewerToken } = await userWith(['REVIEWER'])
+      const res = await h.call('POST', `/api/transactions/${tx.id}/approve`, reviewerToken, {
+        reason: 'Checked',
+      })
+      expect(res.statusCode).toBe(200)
+      const { user: superAdmin, token } = await userWith(['SUPER_ADMIN'])
+      return { creator, creatorToken, reviewer, reviewerToken, superAdmin, token, s, tx }
+    }
+    const sign = (id: string, token: string, body: object = {}) =>
+      h.call('POST', `/api/transactions/${id}/sign`, token, body)
+
+    it.each(['ADMIN', 'ANALYST', 'REVIEWER', 'AUDITOR'] as const)('%s → sign 403', async (role) => {
+      h = await createHarness(db)
+      const { tx } = await approved()
+      const { token } = await userWith([role])
+      expect((await sign(tx.id, token)).statusCode).toBe(403)
+      expect(h.signer.calls).not.toContain('signTransaction')
+    })
+
+    it('signs exactly the approved transaction; the raw tx never appears in responses, audit or logs', async () => {
+      h = await createHarness(db)
+      const { superAdmin, token, tx } = await approved()
+      // A payload in the body is ignored: only the id counts.
+      const res = await sign(tx.id, token, {
+        serialized: '0x02deadbeef',
+        to: '0x0000000000000000000000000000000000000001',
+      })
+      expect(res.statusCode).toBe(200)
+      expect(res.json().transaction.status).toBe('SIGNED')
+
+      const stored = await db.transaction.findUniqueOrThrow({ where: { id: tx.id } })
+      const raw = stored.signedPayload!
+      expect(stored.txHash).toBe(keccak256(raw as `0x${string}`))
+      expect(res.json().transaction.txHash).toBe(stored.txHash)
+      expect(
+        await recoverTransactionAddress({ serializedTransaction: raw as `0x02${string}` }),
+      ).toBe(TEST_ADDRESS)
+      const signed = parseTransaction(raw as `0x${string}`)
+      const unsigned = parseTransaction(tx.unsignedPayload.serialized)
+      for (const f of ['chainId', 'nonce', 'to', 'value', 'gas', 'maxFeePerGas'] as const) {
+        expect(signed[f]).toEqual(unsigned[f])
+      }
+
+      expect(JSON.stringify(res.json())).not.toContain(raw.slice(4))
+      const audits = JSON.stringify(
+        await db.auditLog.findMany({ where: { userId: superAdmin.id } }),
+        (_k, v) => (typeof v === 'bigint' ? v.toString() : v),
+      )
+      expect(audits).toContain('TX_SIGNED')
+      expect(audits).not.toContain(raw.slice(4))
+      expect(audits).not.toContain(TEST_KEY.slice(2))
+      expect(h.logs()).not.toContain(raw.slice(4))
+    })
+
+    it('refuses a transaction that is not APPROVED, without asking the signer', async () => {
+      h = await createHarness(db)
+      const { tx } = await previewed()
+      const { token } = await userWith(['SUPER_ADMIN'])
+      expect((await sign(tx.id, token)).statusCode).toBe(409)
+      expect(h.signer.calls).not.toContain('signTransaction')
+    })
+
+    it('three different people: the creator or the approver cannot sign, even holding SUPER_ADMIN', async () => {
+      h = await createHarness(db)
+      const { token: makerSigner } = await userWith(['ANALYST', 'SUPER_ADMIN'])
+      const s = await scenario()
+      const tx = (await preview(makerSigner, s)).json().transaction
+      const { token: checkerSigner } = await userWith(['REVIEWER', 'SUPER_ADMIN'])
+      expect(
+        (
+          await h.call('POST', `/api/transactions/${tx.id}/approve`, checkerSigner, {
+            reason: 'Checked',
+          })
+        ).statusCode,
+      ).toBe(200)
+      for (const token of [makerSigner, checkerSigner]) {
+        const res = await sign(tx.id, token)
+        expect(res.statusCode).toBe(403)
+        expect(res.json().error.code).toBe('SELF_APPROVAL')
+      }
+      expect(h.signer.calls).not.toContain('signTransaction')
+      const { token: third } = await userWith(['SUPER_ADMIN'])
+      expect((await sign(tx.id, third)).statusCode).toBe(200)
+    })
+
+    it('expires instead of signing when the chain moved, or the approval window passed', async () => {
+      h = await createHarness(db)
+      const { tx, token } = await approved()
+      h.chain.set(TEST_ADDRESS, { nonce: 8, native: ETH, activity: NO_ACTIVITY })
+      const res = await sign(tx.id, token)
+      expect(res.json().error.code).toBe('TRANSACTION_EXPIRED')
+      expect((await db.transaction.findUniqueOrThrow({ where: { id: tx.id } })).statusReason).toBe(
+        'NONCE_CHANGED',
+      )
+      expect(h.signer.calls).not.toContain('signTransaction')
+
+      h = await createHarness(db)
+      const again = await approved()
+      h.advance(31 * 60_000)
+      const { token: fresh } = await userWith(['SUPER_ADMIN'])
+      expect((await sign(again.tx.id, fresh)).statusCode).toBe(409)
+      expect(
+        (await db.transaction.findUniqueOrThrow({ where: { id: again.tx.id } })).statusReason,
+      ).toBe('APPROVAL_TIMEOUT')
+    })
+
+    it('needs the vault unlocked and a recent re-authentication', async () => {
+      h = await createHarness(db)
+      const { tx, token, superAdmin } = await approved()
+      await h.signer.client.lock({ actor: randomUUID() })
+      const locked = await sign(tx.id, token)
+      expect(locked.statusCode).toBe(423)
+      expect(locked.json().error.code).toBe('VAULT_LOCKED')
+      expect((await db.transaction.findUniqueOrThrow({ where: { id: tx.id } })).status).toBe(
+        'APPROVED',
+      )
+
+      h.advance(6 * 60_000)
+      expect((await sign(tx.id, token)).json().error.code).toBe('REAUTH_REQUIRED')
+      await h.call('POST', '/api/auth/reauth', token, {
+        password: PASSWORD,
+        code: h.code(superAdmin.secret!),
+      })
+    })
+
+    it('Signed Tx Verifier: a signature over different data is discarded and audited', async () => {
+      h = await createHarness(db)
+      const { tx, token, superAdmin } = await approved()
+      h.signer.setTamper((t) => ({ ...t, value: (t.value ?? 0n) + 1n }))
+      const res = await sign(tx.id, token)
+      expect(res.statusCode).toBe(502)
+      expect(res.json().error.code).toBe('TRANSACTION_FAILED')
+      const stored = await db.transaction.findUniqueOrThrow({ where: { id: tx.id } })
+      expect(stored).toMatchObject({ status: 'APPROVED', signedPayload: null, txHash: null })
+      const rejected = await db.auditLog.findFirst({
+        where: { userId: superAdmin.id, action: 'TX_SIGNATURE_REJECTED' },
+      })
+      expect(rejected?.metadata).toMatchObject({ reason: 'FIELD_value' })
+    })
+
+    it('the stored signature is immutable', async () => {
+      h = await createHarness(db)
+      const { tx, token } = await approved()
+      await sign(tx.id, token)
+      await expect(
+        db.transaction.update({ where: { id: tx.id }, data: { signedPayload: '0x02ab' } }),
+      ).rejects.toThrow(/immutable/)
     })
   })
 

@@ -4,6 +4,7 @@ import { z, ZodError } from 'zod'
 import { AppError, toErrorBody, type Logger } from '@da/shared'
 import { registerHmacGuard } from './auth/hmac-guard'
 import type { KeyService } from './keys/key.service'
+import type { TransactionSigner } from './transactions/sign-transaction'
 import type { VaultService } from './vault/vault.service'
 
 /** Opaque id of the backend user who triggered the action (logged in vault_events). */
@@ -24,6 +25,7 @@ const importBody = z.object({
   derivationPath: z.string().max(100).nullable().optional(),
 })
 const revealBody = z.object({ actor, address: evmAddress, passphrase })
+const signTransactionBody = z.object({ actor, transactionId: z.uuid() })
 const signChallengeBody = z.object({
   actor,
   address: evmAddress,
@@ -35,6 +37,7 @@ export interface SignerAppDeps {
   hmacSecret: string
   vault: VaultService
   keys: KeyService
+  transactions: TransactionSigner
   now?: () => number
 }
 
@@ -99,6 +102,10 @@ export async function buildSignerApp(deps: SignerAppDeps): Promise<FastifyInstan
   }))
   app.post('/vault/keys/sign-challenge', async (request) =>
     deps.keys.signChallenge(signChallengeBody.parse(request.body)),
+  )
+  // Only a transaction id comes in: the signer reads the approved payload itself (ADR-023).
+  app.post('/vault/transactions/sign', async (request) =>
+    deps.transactions.sign(signTransactionBody.parse(request.body)),
   )
   // The only response that ever carries key material (ADR-009). no-store is set for all responses.
   app.post('/vault/keys/reveal', async (request) =>

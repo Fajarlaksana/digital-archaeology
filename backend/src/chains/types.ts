@@ -24,6 +24,15 @@ export interface ChainAdapter {
    * (nonce, fees, gas) is passed in. `hash` is what the key signs; `payload` is canonical JSON.
    */
   buildUnsignedTransfer(input: UnsignedTransferInput): UnsignedTransfer
+  /**
+   * Signed Tx Verifier (Phase 10, second line of defence): the signed transaction must be exactly
+   * the approved unsigned one (every field) and be signed by `from`.
+   */
+  verifySignedTransfer(input: {
+    signed: string
+    unsignedSerialized: string
+    from: string
+  }): Promise<{ ok: true; txHash: string } | { ok: false; reason: string }>
 }
 
 export interface UnsignedTransferInput {

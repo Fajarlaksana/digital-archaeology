@@ -20,6 +20,14 @@ const envSchema = z
     SIGNER_HMAC_SECRET: z.string().min(HMAC_MIN_SECRET_LENGTH),
     VAULT_UNLOCK_TTL_MINUTES: z.coerce.number().int().min(1).max(60).default(10),
     KEY_REVEAL_ENABLED: z.enum(['true', 'false']).default('true'),
+    /**
+     * Read-only login (da_signer_ro) to the APPLICATION database, used to verify approvals
+     * before signing transactions (ADR-023). Without it, transaction signing is disabled.
+     */
+    APP_DATABASE_URL_READONLY: z.preprocess(
+      (v) => (v === '' ? undefined : v),
+      z.url({ protocol: /^postgres(ql)?$/ }).optional(),
+    ),
   })
   .refine((env) => LOOPBACK.has(env.SIGNER_HOST) || env.SIGNER_ALLOW_NON_LOOPBACK === 'true', {
     message: 'must be a loopback address unless SIGNER_ALLOW_NON_LOOPBACK=true',

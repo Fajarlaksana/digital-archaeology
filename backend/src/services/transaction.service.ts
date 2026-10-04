@@ -56,6 +56,8 @@ export interface PublicTransaction {
   fiatCurrency: string
   unsignedHash: string | null
   unsignedPayload: unknown
+  /** Hash of the signed transaction (Phase 10). The signed raw tx itself is never returned. */
+  txHash: string | null
   createdBy: Person
   createdAt: string
   approvals: Array<{
@@ -152,6 +154,7 @@ export function createTransactionService(deps: {
       fiatCurrency: deps.fiatCurrency,
       unsignedHash: t.unsignedHash,
       unsignedPayload: t.unsignedPayload,
+      txHash: t.txHash,
       createdBy: t.createdBy,
       createdAt: t.createdAt.toISOString(),
       approvals: t.approvals.map((a) => ({
@@ -501,7 +504,75 @@ export function createTransactionService(deps: {
       return toPublic(await getOrThrow(id))
     },
 
-    /** For Phase 10: the signer path re-checks right before signing. */
+    /**
+     * SUPER_ADMIN signs an APPROVED transaction (Phase 10, ADR-023). Order matters:
+     * three-person rule → live re-check (may expire it) → signer (verifies the approval in the
+     * DB itself) → Signed Tx Verifier → SIGNED. Only the transaction id reaches the signer.
+     */
+    async sign(actor: AuthContext, id: string, meta: RequestMeta) {
+      const t = await getOrThrow(id)
+      if (t.status !== 'APPROVED') {
+        throw new AppError('CONFLICT', 'Only APPROVED transactions can be signed')
+      }
+      const approval = t.approvals.find((a) => a.decision === 'APPROVED')
+      if (actor.user.id === t.createdById || actor.user.id === approval?.decidedById) {
+        throw new AppError(
+          'SELF_APPROVAL',
+          'The signer must be a third person: neither the creator nor the approver',
+          { resourceId: id },
+        )
+      }
+      const invalid = await invalidReason(t)
+      if (invalid) {
+        await transactions.close(id, t.addressId, ['APPROVED'], 'EXPIRED', invalid)
+        await record(actor, meta, 'TRANSACTION_EXPIRED', t, { reason: invalid })
+        throw new AppError(
+          'TRANSACTION_EXPIRED',
+          `The approval is no longer valid (${invalid}) — create a new preview`,
+          { resourceId: id },
+        )
+      }
+
+      const { signedTransaction } = await deps.signer.signTransaction({
+        actor: actor.user.id,
+        transactionId: id,
+      })
+      const serialized = (t.unsignedPayload as { serialized?: string } | null)?.serialized ?? ''
+      const verdict = await chainAdapterFor(t.address.network.chainType).verifySignedTransfer({
+        signed: signedTransaction,
+        unsignedSerialized: serialized,
+        from: t.address.address,
+      })
+      if (!verdict.ok) {
+        // Never store or log the mismatching transaction — only why it was refused.
+        await audit.create({
+          action: 'TX_SIGNATURE_REJECTED',
+          result: 'FAILURE',
+          userId: actor.user.id,
+          resourceType: 'transaction',
+          resourceId: id,
+          ipAddress: meta.ip,
+          userAgent: meta.userAgent,
+          requestId: meta.requestId,
+          metadata: { reason: verdict.reason, unsignedHash: t.unsignedHash },
+        })
+        deps.logger.error({ transactionId: id, reason: verdict.reason }, 'TX_SIGNATURE_REJECTED')
+        throw new AppError(
+          'TRANSACTION_FAILED',
+          'The signed transaction does not match the approved one — it was discarded',
+        )
+      }
+      if (!(await transactions.markSigned(id, signedTransaction, verdict.txHash))) {
+        throw new AppError('CONFLICT', 'This transaction changed concurrently')
+      }
+      await record(actor, meta, 'TX_SIGNED', t, {
+        txHash: verdict.txHash,
+        unsignedHash: t.unsignedHash,
+      })
+      return toPublic(await getOrThrow(id))
+    },
+
+    /** Live re-check of a stored transaction (also used before signing). */
     invalidReason: async (id: string) => invalidReason(await getOrThrow(id)),
   }
 }

@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@da/shared": "workspace:*",
+    "@noble/curves": "^2.4.0",
     "@prisma/adapter-pg": "~7.10.0",
     "@prisma/client": "~7.10.0",
     "@scure/bip32": "^2.4.0",

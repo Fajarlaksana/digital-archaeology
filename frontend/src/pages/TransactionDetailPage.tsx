@@ -52,6 +52,20 @@ function Detail({ tx: t }: { tx: PublicTransaction }) {
   const [error, setError] = useState<unknown>(null)
   const isCreator = me?.user.id === t.createdBy?.id
   const approved = t.approvals.find((a) => a.decision === 'APPROVED')
+  const isApprover = me !== null && approved?.decidedBy?.id === me.user.id
+  const canSign = t.status === 'APPROVED' && can('transactions:sign') && !isCreator && !isApprover
+  const [signed, setSigned] = useState<string | null>(null)
+
+  // Only the id goes to the server; the signed raw tx never comes back to the browser.
+  const sign = () =>
+    sensitive.run(async () => {
+      try {
+        const result = await transactionsApi.sign(t.id)
+        setSigned(result.txHash)
+      } finally {
+        await refresh()
+      }
+    })
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: TRANSACTIONS_KEY })
@@ -193,12 +207,27 @@ function Detail({ tx: t }: { tx: PublicTransaction }) {
             </Button>
           </>
         )}
+        {canSign && <Button onClick={() => void sign()}>Sign</Button>}
         {(t.status === 'CREATED' || t.status === 'APPROVED') && can('transactions:create') && (
           <Button variant="secondary" onClick={() => setAction('cancel')}>
             Batalkan
           </Button>
         )}
       </div>
+      {t.status === 'APPROVED' && can('transactions:sign') && (isCreator || isApprover) && (
+        <p className="mt-2 text-xs text-slate-500">
+          Anda membuat atau meng-approve transaksi ini, jadi tanda tangan harus dari SUPER_ADMIN
+          lain.
+        </p>
+      )}
+      {(signed ?? t.txHash) && (
+        <p
+          role="status"
+          className="mt-3 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+        >
+          Ditandatangani. Tx hash: <span className="font-mono text-xs">{signed ?? t.txHash}</span>
+        </p>
+      )}
       {t.status === 'CREATED' && can('transactions:approve') && isCreator && (
         <p className="mt-2 text-xs text-slate-500">
           Anda membuat preview ini, jadi approval harus dari REVIEWER lain.

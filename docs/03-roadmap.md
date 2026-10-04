@@ -243,14 +243,15 @@ M4 Production     : F12 → F13 → F14
 
 ## Fase 10 — Transaction Signing via Key Vault · M
 
-- [ ] Halaman **Signing** (hanya SUPER_ADMIN): daftar tx `APPROVED`, detail ulang, lalu tombol **Sign** (wajib vault unlocked + re-auth MFA jika sesi lebih dari 5 menit)
-- [ ] `POST /api/transactions/:id/sign`: backend hanya mengirim `transaction_id` ke signer, bukan payload dari client
-- [ ] Signer: ambil payload yang di-approve dari backend/DB, cek status `APPROVED` + approver ≠ pembuat, dekripsi key di memori, sign, lalu buang key. Yang dikembalikan hanya signed raw tx
-- [ ] Signed Tx Verifier di backend: decode signed tx, lalu cocokkan dengan payload yang di-approve (from/to/value/data/nonce/chainId/fee cap). Lapisan kedua ini menjaga kalau signer bermasalah
-- [ ] Status `SIGNED` + audit log (`TX_SIGNED`, tanpa isi key)
-- [ ] (Opsional) Alur offline untuk address yang key-nya tidak di vault: export unsigned, lalu import signed raw tx
+(ADR-023)
+- [x] Halaman **Signing** (hanya SUPER_ADMIN): antrean tx `APPROVED` + status vault; tombol **Sign** di halaman detail setelah review SA 4.8 (vault unlocked + konfirmasi ulang ≤ 5 menit)
+- [x] `POST /api/transactions/:id/sign`: client dan backend hanya mengirim `transaction_id` (body diabaikan); cek ulang live dulu (bisa `EXPIRED`); aturan **3 orang**: pembuat ≠ approver ≠ penanda tangan
+- [x] Signer membaca sendiri data yang di-approve dari DB aplikasi lewat login read-only `da_signer_ro` (SELECT per kolom, sesi read-only): status `APPROVED`, keputusan terbaru APPROVED oleh REVIEWER aktif ≠ pembuat, approval belum kedaluwarsa, penanda tangan pihak ketiga, `keccak256(serialized) = unsigned_hash`, chainId + nonce cocok; key didekripsi sebagai Buffer → ECDSA (`@noble/curves`) → dihapus; menolak dua tx berbeda untuk address + nonce yang sama; hanya signed raw tx yang dikembalikan
+- [x] Signed Tx Verifier di backend (`ChainAdapter.verifySignedTransfer`): semua field (type/chainId/nonce/to/value/data/gas/maxFee/tip/accessList) harus sama + sender = address sumber; beda → dibuang, audit `TX_SIGNATURE_REJECTED`
+- [x] Status `SIGNED` + `signed_payload` + `tx_hash` (CHECK + trigger: hanya APPROVED→SIGNED, lalu immutable) + audit `TX_SIGNED` (tanpa key, tanpa raw tx); raw tx tidak pernah dikirim ke browser
+- [ ] (Opsional, ditunda) Alur offline untuk address yang key-nya tidak di vault: export unsigned, lalu import signed raw tx
 
-**DoD:** test membuktikan signer menolak tx yang belum `APPROVED` atau di-approve oleh pembuatnya sendiri, signed tx yang tidak cocok dengan payload ditolak, dan network tab browser tidak memuat key saat signing.
+**DoD:** test membuktikan signer menolak tx yang belum `APPROVED` atau di-approve oleh pembuatnya sendiri, signed tx yang tidak cocok dengan payload ditolak, dan network tab browser tidak memuat key saat signing. ✅
 
 ---
 
@@ -312,6 +313,7 @@ M4 Production     : F12 → F13 → F14
 | 2026-10-01 | F0 | ADR-001/002/004–007 Accepted: TypeScript stack, EVM Sepolia, internal use, >3 operator |
 | 2026-10-01 | F1 | Monorepo + shared/backend/frontend, 49 test hijau. Pending: verifikasi Docker (Docker Desktop gagal start) |
 | 2026-10-02 | F1 | Docker Desktop (Hyper-V) hidup: `docker compose up -d` terverifikasi (port 5434), dev DB pindah ke Docker (ADR-013) |
+| 2026-10-05 | F10 | Signing via vault: signer memverifikasi approval sendiri lewat DB read-only, ECDSA dengan key Buffer, anti-equivocation nonce, Signed Tx Verifier, aturan 3 orang, halaman Signing; 659 test hijau |
 | 2026-10-05 | F9 | Preview tx EIP-1559 dari data live, approval maker-checker + kedaluwarsa otomatis (cap fee/nonce/saldo/30 menit), guard DB transaksi, halaman Transactions; 626 test hijau |
 | 2026-10-04 | F8b | Fee estimator EIP-1559 + eligibility engine (per aset, gas token dicadangkan), Recovery page, laporan CSV; 583 test hijau |
 | 2026-10-04 | F8a | Destination whitelist: bukti kendali via signature + approval REVIEWER independen (maker-checker di service & DB), halaman Destinations; 534 test hijau |

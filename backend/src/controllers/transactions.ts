@@ -79,6 +79,21 @@ export function registerTransactionRoutes(
       requestMeta(request),
     ),
   }))
+  // SUPER_ADMIN only; only the id is accepted — never a payload (ADR-023).
+  app.post(
+    '/api/transactions/:id/sign',
+    {
+      config: { skipGenericAudit: true },
+      preHandler: [
+        guards.permission('transactions:sign'),
+        guards.recentAuth(TRANSACTION_REAUTH_WINDOW_MS),
+      ],
+    },
+    async (request) => ({
+      transaction: await transactions.sign(ctx(request), id(request), requestMeta(request)),
+    }),
+  )
+
   app.post('/api/transactions/:id/reject', decide, async (request) => ({
     transaction: await transactions.reject(
       ctx(request),

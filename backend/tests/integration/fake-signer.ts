@@ -1,3 +1,4 @@
+import { keccak256, parseTransaction, type TransactionSerializableEIP1559 } from 'viem'
 import { mnemonicToAccount, privateKeyToAccount } from 'viem/accounts'
 import { AppError, parseChallengeMessage } from '@da/shared'
 import type { SignerClient, SignerKey, VaultStatus } from '../../src/signer/client'
@@ -6,7 +7,15 @@ import type { SignerClient, SignerKey, VaultStatus } from '../../src/signer/clie
  * In-memory stand-in for the signer service with the same contract and error codes.
  * TEST ONLY: it keeps "secrets" in plain memory — the real signer never does (ADR-008).
  */
-export function createFakeSigner() {
+/** What the real signer reads from the application DB (here: provided by the harness). */
+export type ApprovedLoader = (
+  transactionId: string,
+) => Promise<{ status: string; address: string; serialized: string } | null>
+
+export function createFakeSigner(options: { loadTransaction?: ApprovedLoader } = {}) {
+  let loadTransaction = options.loadTransaction
+  /** Test hook: change the tx before signing, to prove the backend verifier catches it. */
+  let tamper: ((tx: TransactionSerializableEIP1559) => TransactionSerializableEIP1559) | null = null
   let passphrase: string | null = null
   let unlockedBy: string | null = null
   let available = true
@@ -138,12 +147,38 @@ export function createFakeSigner() {
       })
       return { signature }
     },
+    async signTransaction(input) {
+      guard('signTransaction')
+      requireInit()
+      if (!unlockedBy) throw new AppError('VAULT_LOCKED', 'The vault is locked')
+      const tx = loadTransaction ? await loadTransaction(input.transactionId) : null
+      if (!tx) throw new AppError('NOT_FOUND', 'Transaction not found')
+      if (tx.status !== 'APPROVED') {
+        throw new AppError('CONFLICT', 'Only APPROVED transactions can be signed')
+      }
+      const key = keys.get(tx.address.toLowerCase())
+      if (!key) throw new AppError('NOT_FOUND', 'No key for this address in the vault')
+      let parsed = parseTransaction(
+        tx.serialized as `0x${string}`,
+      ) as TransactionSerializableEIP1559
+      if (tamper) parsed = tamper(parsed)
+      const signedTransaction = await privateKeyToAccount(
+        key.secret as `0x${string}`,
+      ).signTransaction(parsed)
+      return { signedTransaction, txHash: keccak256(signedTransaction) }
+    },
   }
 
   return {
     client,
     calls,
     isUnlocked: () => unlockedBy !== null,
+    setLoader(loader: ApprovedLoader) {
+      loadTransaction = loader
+    },
+    setTamper(fn: typeof tamper) {
+      tamper = fn
+    },
     setAvailable(value: boolean) {
       available = value
     },

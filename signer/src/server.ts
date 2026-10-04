@@ -3,6 +3,8 @@ import { buildSignerApp } from './app'
 import { loadEnvFile, parseEnv, type SignerEnv } from './config/env'
 import { DEFAULT_KDF } from './crypto/kdf'
 import { createKeyService } from './keys/key.service'
+import { createPgApprovedTransactionSource } from './transactions/approved-source'
+import { createTransactionSigner } from './transactions/sign-transaction'
 import { createVaultDatabase, createVaultRepository } from './vault/vault.repository'
 import { createVaultService } from './vault/vault.service'
 
@@ -32,12 +34,24 @@ const keys = createKeyService({
   logger,
   revealEnabled: env.KEY_REVEAL_ENABLED === 'true',
 })
-const app = await buildSignerApp({ logger, hmacSecret: env.SIGNER_HMAC_SECRET, vault, keys })
+const approvedSource = env.APP_DATABASE_URL_READONLY
+  ? createPgApprovedTransactionSource(env.APP_DATABASE_URL_READONLY)
+  : null
+if (!approvedSource) logger.warn('TRANSACTION_SIGNING_DISABLED (APP_DATABASE_URL_READONLY not set)')
+const transactions = createTransactionSigner({ source: approvedSource, db, repo, vault, logger })
+const app = await buildSignerApp({
+  logger,
+  hmacSecret: env.SIGNER_HMAC_SECRET,
+  vault,
+  keys,
+  transactions,
+})
 
 async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, 'SHUTDOWN')
   vault.shutdown() // wipe the master key before anything else
   await app.close()
+  await approvedSource?.close()
   await db.$disconnect()
   process.exit(0)
 }

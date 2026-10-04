@@ -3,6 +3,8 @@ import {
   erc20Abi,
   getAddress,
   keccak256,
+  parseTransaction,
+  recoverTransactionAddress,
   serializeTransaction,
   verifyMessage,
 } from 'viem'
@@ -105,9 +107,59 @@ export function buildEvmUnsignedTransfer(input: UnsignedTransferInput): Unsigned
   }
 }
 
+const SIGNED_FIELDS = [
+  'type',
+  'chainId',
+  'nonce',
+  'to',
+  'value',
+  'data',
+  'gas',
+  'maxFeePerGas',
+  'maxPriorityFeePerGas',
+  'accessList',
+] as const
+
+export async function verifyEvmSignedTransfer(input: {
+  signed: string
+  unsignedSerialized: string
+  from: string
+}): Promise<{ ok: true; txHash: string } | { ok: false; reason: string }> {
+  let signed: ReturnType<typeof parseTransaction>
+  let expected: ReturnType<typeof parseTransaction>
+  try {
+    signed = parseTransaction(input.signed as `0x${string}`)
+    expected = parseTransaction(input.unsignedSerialized as `0x${string}`)
+  } catch {
+    return { ok: false, reason: 'UNPARSEABLE' }
+  }
+  if (signed.r === undefined || signed.s === undefined || signed.yParity === undefined) {
+    return { ok: false, reason: 'NOT_SIGNED' }
+  }
+  const norm = (v: unknown) =>
+    typeof v === 'string'
+      ? v.toLowerCase()
+      : JSON.stringify(v ?? null, (_k, x) => (typeof x === 'bigint' ? x.toString() : x))
+  for (const field of SIGNED_FIELDS) {
+    if (norm(signed[field]) !== norm(expected[field]))
+      return { ok: false, reason: `FIELD_${field}` }
+  }
+  let sender: string
+  try {
+    sender = await recoverTransactionAddress({
+      serializedTransaction: input.signed as `0x02${string}`,
+    })
+  } catch {
+    return { ok: false, reason: 'UNRECOVERABLE' }
+  }
+  if (getAddress(sender) !== getAddress(input.from)) return { ok: false, reason: 'WRONG_SENDER' }
+  return { ok: true, txHash: keccak256(input.signed as `0x${string}`).toLowerCase() }
+}
+
 export const evmAdapter: ChainAdapter = {
   chainType: 'EVM',
   checkAddress: checkEvmAddress,
   verifyMessage: verifyEvmMessage,
   buildUnsignedTransfer: buildEvmUnsignedTransfer,
+  verifySignedTransfer: verifyEvmSignedTransfer,
 }

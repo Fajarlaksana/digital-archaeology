@@ -61,6 +61,14 @@ export interface SignerClient {
     address: string
     message: string
   }): Promise<{ signature: string }>
+  /**
+   * Signs an APPROVED transaction. Only the id is sent: the signer reads and re-verifies the
+   * approved payload itself (ADR-023). Returns the signed raw transaction — never key material.
+   */
+  signTransaction(input: {
+    actor: string
+    transactionId: string
+  }): Promise<{ signedTransaction: string; txHash: string }>
 }
 
 /** Argon2id with 64 MiB runs per call, so allow generous time. */
@@ -135,5 +143,6 @@ export function createHttpSignerClient(options: {
       (await call<{ key: SignerKey }>('POST', '/vault/keys/import', input)).key,
     revealKey: (input) => call('POST', '/vault/keys/reveal', input),
     signChallenge: (input) => call('POST', '/vault/keys/sign-challenge', input),
+    signTransaction: (input) => call('POST', '/vault/transactions/sign', input),
   }
 }

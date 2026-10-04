@@ -320,10 +320,17 @@ Menu **Recovery** menampilkan status tiap address (pilih network dan status), le
 
 4. Pembuat preview **tidak bisa** meng-approve/menolak transaksinya sendiri, walaupun memegang role REVIEWER. ANALYST bisa **Batalkan** transaksi CREATED/APPROVED (alasan wajib). Setelah ditolak/dibatalkan/kedaluwarsa, address kembali bisa dinilai dan di-preview.
 
-### 11.3 Sign & broadcast · *Fase 10–11*
-1. **Sign** (SUPER_ADMIN): pastikan vault unlocked, lalu buka menu **Signing**, periksa ulang detail, klik **Sign**, dan masukkan kode MFA jika diminta.
-   Sistem hanya menandatangani data yang persis sama dengan yang di-approve. Jika data berubah, transaksi ditolak.
-2. **Broadcast** (SUPER_ADMIN): klik **Broadcast**, lalu pantau status di **Transactions** sampai **CONFIRMED**.
+### 11.3 Sign · *Fase 10* ✅ · SUPER_ADMIN (orang ketiga)
+1. Buka vault di **Key Vault** (passphrase). Menu **Signing** menampilkan status vault dan antrean transaksi **APPROVED**.
+2. Klik transaksi, periksa ulang kotak **Periksa sebelum approve** (source, destination, jumlah, fee maksimum, network, nonce), lalu klik **Sign**. Sistem meminta konfirmasi password + kode authenticator bila konfirmasi terakhir lebih dari 5 menit lalu.
+3. Penanda tangan harus **orang ketiga**: bukan pembuat preview dan bukan REVIEWER yang meng-approve (tombol tidak muncul, server menolak `SELF_APPROVAL`).
+4. Sebelum menandatangani, sistem memeriksa ulang jaringan (nonce, fee, saldo, masa berlaku approval). Jika berubah, transaksi menjadi **EXPIRED** dan perlu preview baru.
+5. Signer hanya menerima **ID transaksi**, membaca sendiri data yang di-approve, dan menolak jika ada yang tidak cocok. Setelah ditandatangani, backend mencocokkan ulang hasilnya dengan data yang di-approve. Hasil: status **SIGNED** dan **Tx hash** tampil. Transaksi yang sudah ditandatangani **belum dikirim** ke jaringan.
+
+> Cara memastikan key tidak pernah ke browser: buka DevTools → Network, klik **Sign**, lalu periksa request `POST /api/transactions/<id>/sign`. Body-nya `{}` dan response-nya hanya berisi data transaksi + `txHash`, tanpa private key maupun raw signed transaction.
+
+### 11.4 Broadcast · *Fase 11*
+1. **Broadcast** (SUPER_ADMIN): klik **Broadcast**, lalu pantau status di **Transactions** sampai **CONFIRMED**.
 
 **Saran:** untuk destination baru di mainnet, kirim jumlah kecil dulu sebagai uji coba.
 

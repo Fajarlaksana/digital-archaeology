@@ -6,6 +6,7 @@ import { buildSignerApp } from '../../src/app'
 import { open, unpack } from '../../src/crypto/aead'
 import { deriveKek } from '../../src/crypto/kdf'
 import { createKeyService } from '../../src/keys/key.service'
+import { createTransactionSigner } from '../../src/transactions/sign-transaction'
 import {
   createVaultDatabase,
   createVaultRepository,
@@ -336,6 +337,13 @@ describe.skipIf(!testDatabaseUrl)('key vault (signer)', () => {
           vault,
           logger,
           revealEnabled: true,
+        }),
+        transactions: createTransactionSigner({
+          source: null,
+          db,
+          repo: createVaultRepository(db),
+          vault,
+          logger,
         }),
         now: () => clock,
       })

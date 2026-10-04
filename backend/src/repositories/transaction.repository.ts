@@ -235,6 +235,15 @@ export function createTransactionRepository(db: Database) {
         })
     },
 
+    /** APPROVED → SIGNED with the verified signed transaction (immutable afterwards, DB trigger). */
+    async markSigned(id: string, signedPayload: string, txHash: string): Promise<boolean> {
+      const result = await db.transaction.updateMany({
+        where: { id, status: 'APPROVED', signedPayload: null },
+        data: { status: 'SIGNED', signedPayload, txHash },
+      })
+      return result.count === 1
+    },
+
     close(
       id: string,
       addressId: string,

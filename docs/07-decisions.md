@@ -273,6 +273,20 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-0
   7. **Mainnet** hanya bila `NETWORK_MODE=mainnet` (aturan 10).
 - **Batasan:** nonce memakai blockTag `latest`, sehingga transaksi lain yang masih di mempool tidak terlihat; ini ditangkap saat signing/broadcast (Fase 10–11). Tampilan fee mengasumsikan aset native network. Satu transaksi aktif per address berarti multi-aset diproses berurutan (token dulu, native terakhir).
 
+## ADR-023 — Signing transaksi via Key Vault (Fase 10)
+- **Status:** Accepted
+- **Tanggal:** 2026-10-05
+- **Konteks:** roadmap Fase 10 + P10. Pemilik projek memilih: signer membaca DB aplikasi **read-only** untuk memverifikasi approval sendiri; penanda tangan harus **orang ketiga**; alur offline ditunda.
+- **Keputusan:**
+  1. **Hanya ID yang dikirim.** `POST /api/transactions/:id/sign` mengabaikan body; backend meneruskan `{actor, transactionId}` ke signer (HMAC). Tidak ada jalur untuk mengirim payload tx ke signer.
+  2. **Signer memverifikasi sendiri** lewat login `da_signer_ro`: hak SELECT per kolom (transactions, approvals, addresses, networks, users.status, user_roles), tanpa akses ke sesi, password hash, MFA, audit, atau `signed_payload`; setiap sesi `default_transaction_read_only=on`. Grant ada di migrasi backend dan hanya berlaku jika role ada (dibuat oleh init script). Signer memeriksa: status APPROVED, keputusan terbaru = APPROVED oleh user ACTIVE yang memegang REVIEWER dan ≠ pembuat, `expires_at` belum lewat, penanda tangan ≠ pembuat dan ≠ approver, `keccak256(serialized) = unsigned_hash`, chainId + nonce cocok dengan baris DB.
+  3. **Key tidak pernah jadi string.** Private key didekripsi ke `Buffer`, dipakai untuk satu tanda tangan ECDSA atas hash (`@noble/curves`, `prehash: false`, low-S, RFC 6979), lalu dihapus. Signer memeriksa sendiri bahwa signature me-recover ke address sumber.
+  4. **Anti-equivocation:** vault tidak pernah menandatangani dua transaksi **berbeda** untuk address + chain + nonce yang sama (dicek dari `vault_events` TRANSACTION_SIGNED). Menandatangani ulang tx yang sama menghasilkan signature identik (deterministik).
+  5. **Signed Tx Verifier di backend** (`ChainAdapter.verifySignedTransfer`): semua field harus identik dengan payload yang di-approve dan sender = address sumber. Jika tidak: dibuang (tidak disimpan/di-log), audit `TX_SIGNATURE_REJECTED`, status tetap APPROVED.
+  6. **Urutan di backend:** aturan 3 orang → cek ulang live (`checkStillValid`, bisa EXPIRED) → signer → verifier → `SIGNED`. CHECK + trigger DB: `signed_payload` + `tx_hash` wajib saat SIGNED, hanya boleh diisi pada transisi APPROVED→SIGNED, lalu immutable.
+  7. **Raw signed tx tidak dikirim ke browser** (API hanya `txHash`) dan tidak masuk log/audit.
+- **Batasan:** signer mempercayai `actor` dari backend (backend yang dibobol bisa mengaku sebagai SUPER_ADMIN lain, tetapi tetap butuh vault yang terbuka + tx yang benar-benar di-approve di DB). User dengan akses tulis ke DB aplikasi (`da`) secara teori bisa membuat baris approval palsu; trigger membatasi bentuknya, dan mitigasi penuh (approval bertanda tangan kriptografis) dicatat untuk pasca-MVP. Alur offline (export unsigned / import signed) ditunda.
+
 ---
 
 ## Jawaban pertanyaan terbuka (02-analysis bagian 5)

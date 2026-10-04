@@ -21,7 +21,8 @@ const TONE: Record<TransactionStatus, 'green' | 'amber' | 'red' | 'slate' | 'blu
 
 export const STATUS_HINT: Partial<Record<TransactionStatus, string>> = {
   CREATED: 'Menunggu approval REVIEWER',
-  APPROVED: 'Disetujui, menunggu signing (Fase 10)',
+  APPROVED: 'Disetujui, menunggu tanda tangan SUPER_ADMIN',
+  SIGNED: 'Ditandatangani, menunggu broadcast (Fase 11)',
   EXPIRED: 'Kedaluwarsa, buat preview baru',
 }
 
@@ -29,7 +30,14 @@ export function TxStatusBadge({ status }: { status: TransactionStatus }) {
   return <Badge tone={TONE[status]}>{status}</Badge>
 }
 
-const FILTERS: TransactionStatus[] = ['CREATED', 'APPROVED', 'REJECTED', 'EXPIRED', 'CANCELLED']
+const FILTERS: TransactionStatus[] = [
+  'CREATED',
+  'APPROVED',
+  'SIGNED',
+  'REJECTED',
+  'EXPIRED',
+  'CANCELLED',
+]
 
 /** Recovery transactions (Phase 9): previews, approvals and — later — signing & broadcast. */
 export function TransactionsPage() {

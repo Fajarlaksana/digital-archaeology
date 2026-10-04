@@ -39,6 +39,7 @@ Alternatif tanpa Docker (ADR-011): PostgreSQL native, setup dengan `psql -U post
 - Backend: `http://127.0.0.1:3000` (cek `GET /health`, `/health/database`, `/health/rpc`)
 - Frontend: `http://127.0.0.1:5173` (Vite mem-proxy `/api` dan `/health` ke backend)
 - Reset database lokal (hapus semua data): `docker compose down -v`, lalu `docker compose up -d`. Script `docker/postgres/init` hanya jalan saat volume pertama kali dibuat.
+- Login read-only signer `da_signer_ro` (ADR-023) dibuat oleh `docker/postgres/init/02-signer-readonly.sh`. Untuk volume yang **sudah ada**, buat sekali: `docker compose exec postgres psql -U postgres -c "CREATE ROLE da_signer_ro LOGIN PASSWORD 'signer_ro_dev_only' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT"`, lalu `pnpm --filter backend db:deploy` (migrasi memberi hak SELECT per kolom bila role ada). Signer membaca `APP_DATABASE_URL_READONLY`; tanpa itu signing transaksi nonaktif.
 - Signer (internal, mulai Fase 7): `http://127.0.0.1:4000`. Jangan membuka port ini ke jaringan luar.
 
 ## 3. Struktur folder

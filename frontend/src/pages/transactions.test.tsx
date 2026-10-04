@@ -59,6 +59,7 @@ const tx = (overrides: Partial<PublicTransaction> = {}): PublicTransaction => ({
   fiatCurrency: 'USD',
   unsignedHash: `0x${'ab'.repeat(32)}`,
   unsignedPayload: { type: 'eip1559', nonce: 7 },
+  txHash: null,
   createdBy: { id: 'analyst-1', name: 'Ana' },
   createdAt: '2026-10-05T01:00:00.000Z',
   approvals: [

@@ -2,7 +2,7 @@
 
 Sistem inventarisasi, verifikasi kepemilikan, dan pemulihan aset kripto yang sudah lama tidak aktif. Sistem ini **hanya** untuk address milik sendiri atau address yang punya mandat/otorisasi sah.
 
-> **Status saat ini:** Fase 1–6 selesai secara kode; Fase 7a–7c (Key Vault: signer, import, reveal, UI; ownership verification) selesai. Penutupan M1 menunggu verifikasi live dengan wallet testnet. Berikutnya: **Fase 7d — review keamanan Key Vault & verifikasi**.
+> **Status saat ini:** Fase 1–10 selesai secara kode (inventaris, scan, valuasi, Key Vault, verifikasi kepemilikan, destination whitelist, eligibility, preview & approval, signing). Penutupan M1/M2 menunggu verifikasi live dengan wallet testnet. Berikutnya: **Fase 11 — Broadcast & Confirmation**.
 > Update baris ini setiap kali sebuah fase selesai (lihat [docs/03-roadmap.md](docs/03-roadmap.md)).
 
 ---

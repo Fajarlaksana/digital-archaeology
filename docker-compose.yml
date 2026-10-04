@@ -14,6 +14,8 @@ services:
       VAULT_DB_NAME: da_vault
       VAULT_DB_USER: da_vault
       VAULT_DB_PASSWORD: ${VAULT_DB_PASSWORD:-vault_dev_only}
+      SIGNER_RO_DB_USER: da_signer_ro
+      SIGNER_RO_DB_PASSWORD: ${SIGNER_RO_DB_PASSWORD:-signer_ro_dev_only}
     ports:
       - '127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432'
     volumes:
