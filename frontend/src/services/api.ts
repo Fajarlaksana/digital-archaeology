@@ -499,6 +499,11 @@ export const reportUrls = {
   inventory: '/api/reports/addresses.csv?type=inventory',
   inactivity: '/api/reports/addresses.csv?type=inactivity',
   eligibility: '/api/reports/eligibility.csv',
+  balances: (networkId?: string) => `/api/reports/balances.csv${queryString({ networkId })}`,
+  authorizations: (networkId?: string) =>
+    `/api/reports/authorizations.csv${queryString({ networkId })}`,
+  transactions: (filter: { networkId?: string; from?: string; to?: string }) =>
+    `/api/reports/transactions.csv${queryString(filter)}`,
 }
 
 /** Formats a fiat amount string for display without ever parsing it into a float. */
@@ -894,4 +899,60 @@ export const transactionsApi = {
       method: 'POST',
       body: {},
     }).then((r) => r.transaction),
+}
+
+// ─── Audit logs & reports (Phase 12) ───
+
+export type AuditResult = 'SUCCESS' | 'FAILURE' | 'DENIED'
+
+export interface AuditEntry {
+  sequence: string
+  createdAt: string
+  user: { id: string; email: string; name: string } | null
+  action: string
+  result: AuditResult
+  resourceType: string | null
+  resourceId: string | null
+  ipAddress: string | null
+  userAgent: string | null
+  requestId: string | null
+  metadata: unknown
+  hash: string | null
+  prevHash: string | null
+}
+
+export interface AuditFilter {
+  action?: string
+  result?: AuditResult
+  resourceId?: string
+  /** ISO timestamps (inclusive / exclusive). */
+  from?: string
+  to?: string
+}
+
+export interface ChainCheck {
+  ok: boolean
+  checked: number
+  firstBrokenSequence: string | null
+  reason: 'ROW_MODIFIED' | 'LINK_BROKEN' | null
+  headSequence: string | null
+  headHash: string | null
+}
+
+/** Builds a query string from defined, non-empty values only. */
+export function queryString(params: Record<string, string | undefined>): string {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) if (value) search.set(key, value)
+  const qs = search.toString()
+  return qs ? `?${qs}` : ''
+}
+
+export const auditApi = {
+  list: (filter: AuditFilter & { before?: string }) =>
+    apiFetch<{ items: AuditEntry[]; nextBefore: string | null }>(
+      `/api/audit-logs${queryString({ ...filter })}`,
+    ),
+  actions: () => apiFetch<{ actions: string[] }>('/api/audit-logs/actions').then((r) => r.actions),
+  verify: () => apiFetch<ChainCheck>('/api/audit-logs/verify', { method: 'POST', body: {} }),
+  csvUrl: (filter: AuditFilter) => `/api/reports/audit.csv${queryString({ ...filter })}`,
 }

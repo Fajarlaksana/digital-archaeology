@@ -271,9 +271,11 @@ M4 Production     : F12 → F13 → F14
 
 ## Fase 12 — Reporting & Audit UI · S–M
 
-- [ ] Semua laporan SA bagian 21 (CSV, PDF opsional) dengan pemisahan data publik / estimasi / otorisasi / status (SA bagian 13)
-- [ ] Halaman Audit Logs (read-only, filter) untuk AUDITOR
-- [ ] (Opsional) verifikasi hash chain audit log
+(ADR-025)
+- [x] Semua laporan SA bagian 21 dalam CSV (PDF tidak dibuat, keputusan pemilik projek): Inventory, Inactivity, **Balance**, **Authorization**, Eligibility, **Transaction**, **Audit**; laporan baru memakai awalan kolom `chain_` / `estimate_` / `auth_` / `status_` (SA 13), lewat `lib/csv.ts`, setiap export diaudit
+- [x] Halaman **Reports** (semua laporan, filter network + periode) — Operational Dashboard sudah ada sejak Fase 6
+- [x] Halaman **Audit Logs** untuk AUDITOR (`audit:read`): read-only, filter aksi/hasil/resource/tanggal, paginasi `sequence`, metadata (sudah di-redact) per baris, export CSV sesuai filter
+- [x] Hash chain audit log: trigger `audit_logs_chain` mengisi `prev_hash`/`hash` = SHA-256 (fungsi SQL `audit_log_row_hash`) di bawah advisory lock, `sequence` diambil di bawah lock yang sama; backfill baris lama; tombol **Verifikasi integritas** (deteksi baris diubah/dihapus, head hash untuk dicatat di luar sistem)
 
 ---
 
@@ -315,6 +317,7 @@ M4 Production     : F12 → F13 → F14
 | 2026-10-01 | F0 | ADR-001/002/004–007 Accepted: TypeScript stack, EVM Sepolia, internal use, >3 operator |
 | 2026-10-01 | F1 | Monorepo + shared/backend/frontend, 49 test hijau. Pending: verifikasi Docker (Docker Desktop gagal start) |
 | 2026-10-02 | F1 | Docker Desktop (Hyper-V) hidup: `docker compose up -d` terverifikasi (port 5434), dev DB pindah ke Docker (ADR-013) |
+| 2026-10-05 | F12 | Laporan Balance/Authorization/Transaction/Audit (awalan kolom SA 13), halaman Reports & Audit Logs, hash chain audit + verifikasi; 698 test hijau |
 | 2026-10-05 | F11 | Broadcast + CHECK_PENDING_TRANSACTIONS (3 konfirmasi, FAILED reverted/replaced, STUCK), TRANSFERRED + refresh saldo, link explorer, checklist E2E Sepolia (docs/08); 680 test hijau |
 | 2026-10-05 | F10 | Signing via vault: signer memverifikasi approval sendiri lewat DB read-only, ECDSA dengan key Buffer, anti-equivocation nonce, Signed Tx Verifier, aturan 3 orang, halaman Signing; 659 test hijau |
 | 2026-10-05 | F9 | Preview tx EIP-1559 dari data live, approval maker-checker + kedaluwarsa otomatis (cap fee/nonce/saldo/30 menit), guard DB transaksi, halaman Transactions; 626 test hijau |

@@ -6,6 +6,7 @@ import { Layout } from './components/Layout'
 import { NAV_ITEMS, type NavItem } from './navigation'
 import { AddressDetailPage } from './pages/AddressDetailPage'
 import { AddressesPage } from './pages/AddressesPage'
+import { AuditLogsPage } from './pages/AuditLogsPage'
 import { AuthorizationsPage } from './pages/AuthorizationsPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { DestinationsPage } from './pages/DestinationsPage'
@@ -15,6 +16,7 @@ import { MfaPage } from './pages/MfaPage'
 import { NetworksPage } from './pages/NetworksPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
 import { RecoveryPage } from './pages/RecoveryPage'
+import { ReportsPage } from './pages/ReportsPage'
 import { ScanDetailPage } from './pages/ScanDetailPage'
 import { ScansPage } from './pages/ScansPage'
 import { SigningPage } from './pages/SigningPage'
@@ -33,6 +35,8 @@ const PAGES: Record<string, () => React.JSX.Element> = {
   '/recovery': RecoveryPage,
   '/transactions': TransactionsPage,
   '/signing': SigningPage,
+  '/reports': ReportsPage,
+  '/audit-logs': AuditLogsPage,
 }
 
 /** Direct URL access to a page the user may not see sends them home (the API denies it anyway). */

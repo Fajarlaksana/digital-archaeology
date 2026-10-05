@@ -161,6 +161,8 @@ Halaman awal setelah login menampilkan:
 - Scan otomatis tercatat sebagai aksi **SYSTEM** dan diberi label *terjadwal*. Scan ini **hanya membaca** blockchain dan tidak pernah memindahkan aset.
 
 ### 7.5 Export CSV
+- Semua laporan ada di menu **Reports** (Fase 12): Address Inventory, Inactivity, Balance, Authorization, Recovery Eligibility, Transaction, dan Audit (khusus AUDITOR). Pilih **network** dan/atau **periode** untuk mempersempit Balance, Authorization, dan Transaction.
+- Awalan kolom di laporan baru memisahkan jenis data (SA 13): `chain_` = data blockchain publik, `estimate_` = estimasi nilai (testnet = simulasi), `auth_` = data otorisasi, `status_` = status internal sistem.
 - Menu **Addresses**, lalu **Export inventaris (CSV)** atau **Export tidak aktif (CSV)**. Satu baris per address × aset, berisi saldo persis (desimal + base unit), estimasi nilai, `value_simulated`, sumber dan waktu harga, serta status.
 - Isian yang diawali `=`, `+`, `-`, `@` diberi tanda kutip satu (`'`) agar tidak dijalankan sebagai rumus saat dibuka di Excel/Sheets.
 - Setiap export tercatat di audit log.
@@ -347,10 +349,17 @@ Menu **Recovery** menampilkan status tiap address (pilih network dan status), le
 
 **Saran:** untuk destination baru di mainnet, kirim jumlah kecil dulu sebagai uji coba.
 
-## 12. Audit log · *Fase 12* · AUDITOR
+## 12. Audit log · *Fase 12* ✅ · AUDITOR
 
-Menu **Audit Logs**: filter per user, aksi, resource, dan tanggal. Log tidak bisa diedit atau dihapus.
-AUDITOR sebaiknya rutin memeriksa aksi SUPER_ADMIN: `VAULT_UNLOCKED`, `KEY_IMPORTED`, `KEY_REVEALED`, `TX_SIGNED`.
+1. Menu **Audit Logs** menampilkan entri terbaru dulu. Filter: **aksi**, **hasil** (SUCCESS/DENIED/FAILURE), **Resource ID** (mis. ID transaksi), **tanggal**; klik **Terapkan filter**. **Muat lebih banyak** untuk entri lebih lama.
+2. Klik sebuah baris untuk melihat **metadata** (data sensitif sudah disamarkan `[REDACTED]` saat dicatat), request ID, dan hash.
+3. **Unduh CSV (filter saat ini)** untuk arsip/pemeriksaan di spreadsheet. Unduhan ini juga tercatat.
+4. **Verifikasi integritas**: setiap baris terhubung ke baris sebelumnya dengan hash SHA-256. Hasil:
+   - **Rantai utuh** + *head* (nomor dan hash baris terakhir). **Catat head ini di luar sistem** (mis. buku catatan/ dokumen terpisah) secara berkala: jika kelak baris terbaru dihapus, head yang tercatat tidak akan cocok lagi.
+   - **Rantai RUSAK mulai baris #N**: isi baris diubah atau ada baris yang dihapus/disisipkan langsung di database. Segera laporkan dan amankan server.
+5. Log tidak bisa diedit atau dihapus lewat aplikasi maupun user database aplikasi.
+
+AUDITOR sebaiknya rutin memeriksa aksi SUPER_ADMIN: `VAULT_UNLOCKED`, `KEY_IMPORTED`, `KEY_REVEALED`, `TX_SIGNED`, `TX_BROADCASTED`, serta penolakan (`DENIED`) dan `TX_SIGNATURE_REJECTED`.
 
 ## 13. Troubleshooting
 

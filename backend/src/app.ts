@@ -9,6 +9,7 @@ import { registerAuthRoutes } from './controllers/auth'
 import { registerHealthRoutes } from './controllers/health'
 import { registerNetworkRoutes } from './controllers/networks'
 import { registerOverviewRoutes } from './controllers/overview'
+import { registerAuditAndReportRoutes } from './controllers/audit'
 import { registerDestinationRoutes } from './controllers/destinations'
 import { registerEligibilityRoutes } from './controllers/eligibility'
 import { registerTransactionRoutes } from './controllers/transactions'
@@ -135,6 +136,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     })
     registerDestinationRoutes(app, { destinations: services.destinations, guards })
     registerTransactionRoutes(app, { transactions: services.transactions, guards })
+    registerAuditAndReportRoutes(app, {
+      audit: services.auditTrail,
+      reports: services.operationalReports,
+      guards,
+    })
     registerEligibilityRoutes(app, {
       eligibility: services.eligibility,
       report: services.eligibilityReport,

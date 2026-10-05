@@ -20,7 +20,9 @@ import { createAuthService } from './auth.service'
 import { createChainHealth } from './chain-health'
 import { createDashboardService, type ScheduleInfo } from './dashboard.service'
 import { createNetworkService } from './network.service'
+import { createAuditService } from './audit.service'
 import { createDestinationService } from './destination.service'
+import { createOperationalReports } from './operational-reports'
 import { createEligibilityService } from './eligibility.service'
 import { createTransactionService } from './transaction.service'
 import { createOwnershipService } from './ownership.service'
@@ -169,6 +171,8 @@ export function createServices(db: Database, config: ServiceConfig) {
       now,
     }),
     eligibilityReport: createEligibilityReport({ db, audit, fiatCurrency }),
+    auditTrail: createAuditService({ audit, logger: config.logger }),
+    operationalReports: createOperationalReports({ db, audit, fiatCurrency }),
     vault: createVaultService({ signer: config.signer, addresses, audit, logger: config.logger }),
     ownership: createOwnershipService({
       authorizations: createAuthorizationRepository(db),

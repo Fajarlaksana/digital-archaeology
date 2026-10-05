@@ -300,6 +300,17 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-0
   6. **Raw signed tx tetap tidak pernah ke browser**; UI menampilkan hash + link explorer (`<explorer>/tx/<hash>`).
 - **Batasan:** reorg dalam yang menghapus receipt setelah PENDING tidak dimodelkan (status tetap PENDING sampai receipt muncul lagi). Deteksi `REPLACED_OR_DROPPED` mengandalkan konsistensi RPC antara nonce dan receipt; jika RPC tertinggal, tx yang sebenarnya sukses bisa salah ditandai — cek explorer bila ragu. Address `TRANSFERRED` dilewati eligibility (ADR-021): aset sisa (mis. native setelah token) di-preview langsung dari Address Detail. Speed-up/cancel tx STUCK belum ada di sistem (manual, runbook Fase 14).
 
+## ADR-025 — Laporan & audit trail yang bisa diverifikasi (Fase 12)
+- **Status:** Accepted
+- **Tanggal:** 2026-10-05
+- **Konteks:** SA 13 + 21, roadmap Fase 12. Pemilik projek memilih: **hash chain ya**, **PDF tidak** (CSV saja).
+- **Keputusan:**
+  1. **Laporan baru** (Balance, Authorization, Transaction, Audit) memakai awalan kolom untuk memisahkan jenis data (SA 13): `chain_` data blockchain publik, `estimate_` estimasi nilai, `auth_` otorisasi, `status_` status internal. Laporan lama (inventory/inactivity/eligibility) tetap kompatibel. Semuanya lewat `lib/csv.ts` (anti formula injection), dibatasi 50.000 baris, dan setiap export dicatat `REPORT_EXPORTED` dengan filternya.
+  2. **Audit Logs** hanya untuk `audit:read` (AUDITOR): read-only, filter, paginasi berbasis `sequence` (cursor `before`), export CSV. Melihat log tidak diaudit (menghindari noise); export dan verifikasi diaudit.
+  3. **Hash chain di database**, bukan di aplikasi: trigger `BEFORE INSERT` `audit_logs_chain` mengambil `pg_advisory_xact_lock`, lalu **mengambil `sequence` di bawah lock** (sehingga urutan rantai = urutan `sequence` walau ada transaksi paralel), mengisi `prev_hash` (hash baris sebelumnya, genesis = 64 nol) dan `hash = SHA-256(field dipisah US + prev_hash)` lewat fungsi `audit_log_row_hash`. Verifikasi memakai fungsi SQL yang sama (tidak ada perbedaan serialisasi JS vs SQL). Baris lama di-backfill di migrasi; CHECK format hash berlaku sesudahnya.
+  4. **Verifikasi** melaporkan baris pertama yang rusak (`ROW_MODIFIED` atau `LINK_BROKEN`) dan **head** (sequence + hash terakhir) untuk dicatat di luar sistem.
+- **Batasan (jujur):** hash chain membuat perubahan **terdeteksi**, bukan mustahil: pihak dengan hak owner/superuser DB bisa menghitung ulang seluruh rantai. Penghapusan baris **terbaru** hanya terdeteksi dengan membandingkan head yang dicatat di luar sistem (anchoring eksternal otomatis dicatat untuk Fase 14). Insert audit kini berurutan (lock sampai commit), sehingga transaksi panjang yang menulis audit menahan penulis audit lain; skala sistem ini kecil, jadi diterima.
+
 ---
 
 ## Jawaban pertanyaan terbuka (02-analysis bagian 5)

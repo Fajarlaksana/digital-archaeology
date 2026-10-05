@@ -20,6 +20,10 @@ export interface AuditQuery {
   action?: string
   resourceType?: string
   resourceId?: string
+  result?: AuditResult
+  /** Inclusive lower / exclusive upper bound on created_at. */
+  from?: Date
+  to?: Date
   limit?: number
   /** Return entries with sequence lower than this (pagination, newest first). */
   beforeSequence?: bigint
@@ -50,20 +54,83 @@ export function createAuditLogRepository(db: Database) {
       })
     },
 
-    list(query: AuditQuery = {}): Promise<AuditLog[]> {
+    list(query: AuditQuery = {}): Promise<AuditLogWithUser[]> {
       return db.auditLog.findMany({
         where: {
           userId: query.userId,
           action: query.action,
           resourceType: query.resourceType,
           resourceId: query.resourceId,
+          result: query.result,
+          createdAt: query.from || query.to ? { gte: query.from, lt: query.to } : undefined,
           sequence: query.beforeSequence === undefined ? undefined : { lt: query.beforeSequence },
         },
+        include: { user: { select: { id: true, email: true, name: true } } },
         orderBy: { sequence: 'desc' },
-        take: Math.min(query.limit ?? 50, 500),
+        take: Math.min(query.limit ?? 50, 50_000),
       })
     },
+
+    async distinctActions(): Promise<string[]> {
+      const rows = await db.auditLog.findMany({
+        distinct: ['action'],
+        select: { action: true },
+        orderBy: { action: 'asc' },
+      })
+      return rows.map((r) => r.action)
+    },
+
+    /**
+     * Recomputes every row's hash in SQL with the SAME function the insert trigger uses
+     * (audit_log_row_hash) and checks each link to the previous row (ADR-025).
+     */
+    async verifyChain(): Promise<ChainCheck> {
+      const [broken] = await db.$queryRaw<Array<{ sequence: bigint; reason: string }>>`
+        WITH chain AS (
+          SELECT "sequence", "hash", "prev_hash",
+                 audit_log_row_hash("sequence", "id", "user_id", "action", "resource_type",
+                   "resource_id", "result"::text, "ip_address", "user_agent", "request_id",
+                   "metadata", "created_at", "prev_hash") AS expected,
+                 lag("hash") OVER (ORDER BY "sequence") AS previous
+            FROM "audit_logs"
+        )
+        SELECT "sequence",
+               CASE WHEN "hash" IS DISTINCT FROM expected THEN 'ROW_MODIFIED'
+                    ELSE 'LINK_BROKEN' END AS reason
+          FROM chain
+         WHERE "hash" IS DISTINCT FROM expected
+            OR "prev_hash" IS DISTINCT FROM coalesce(previous, repeat('0', 64))
+         ORDER BY "sequence"
+         LIMIT 1`
+      const [head] = await db.$queryRaw<
+        Array<{ count: bigint; sequence: bigint | null; hash: string | null }>
+      >`
+        SELECT (SELECT count(*) FROM "audit_logs") AS count, "sequence", "hash"
+          FROM "audit_logs" ORDER BY "sequence" DESC LIMIT 1`
+      return {
+        ok: broken === undefined,
+        checked: Number(head?.count ?? 0n),
+        firstBrokenSequence: broken ? broken.sequence.toString() : null,
+        reason: broken ? (broken.reason as ChainCheck['reason']) : null,
+        headSequence: head?.sequence?.toString() ?? null,
+        headHash: head?.hash ?? null,
+      }
+    },
   }
+}
+
+export type AuditLogWithUser = AuditLog & {
+  user: { id: string; email: string; name: string } | null
+}
+
+export interface ChainCheck {
+  ok: boolean
+  checked: number
+  firstBrokenSequence: string | null
+  reason: 'ROW_MODIFIED' | 'LINK_BROKEN' | null
+  /** Latest row: record this hash outside the system to detect truncation later. */
+  headSequence: string | null
+  headHash: string | null
 }
 
 export type AuditLogRepository = ReturnType<typeof createAuditLogRepository>
