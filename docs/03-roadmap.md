@@ -281,13 +281,15 @@ M4 Production     : F12 → F13 → F14
 
 ## Fase 13 — Hardening Keamanan & Monitoring · M
 
-- [ ] Security test (SA bagian 17): authN, authZ, rate limit, input validation, replay, approval flow
-- [ ] Test "no secret leakage": grep log + response API + DB dump untuk pola key/seed (kecuali endpoint reveal)
-- [ ] Pastikan service `signer/` tidak bisa diakses dari luar jaringan internal (port scan)
+> Dikerjakan dalam sesi: **13a** test keamanan & hardening ✅ · **13b** fitur operasional. (ADR-026)
+
+- [x] Security test (SA bagian 17): **inventaris route** otomatis (setiap `/api` route wajib guard; hanya login yang publik; di luar alur auth wajib *permission*; aksi vault/keputusan/sign/broadcast wajib konfirmasi ulang ≤ 5 menit; setiap route menolak anonim dengan 401), **fuzz input** di semua route POST/PATCH (tidak pernah 5xx, tidak pernah memantulkan input). Rate limit, replay (HMAC, TOTP, challenge, nonce) dan approval flow sudah diuji di fase masing-masing
+- [x] Test "no secret leakage": seluruh siklus (import key + seed, reveal, challenge, preview → approve → sign → broadcast) lalu cari key/seed/passphrase/password/TOTP secret di log, semua response (kecuali reveal), dan dump **semua tabel** DB aplikasi; versi signer memeriksa `da_vault`, log, dan response HTTP signer. Keduanya terbukti menangkap kebocoran yang disisipkan (mutation check)
+- [x] Signer tidak bisa diakses dari luar: test mencoba konek lewat semua interface IPv4 non-loopback (harus ditolak); bind ke `0.0.0.0` terbukti terdeteksi
 - [ ] Notifikasi (email/Telegram) setiap vault unlock, reveal, dan signing
 - [ ] Review audit log aksi SUPER_ADMIN oleh AUDITOR (prosedur berkala)
 - [ ] Metrics (SA bagian 10) + health check lengkap
-- [ ] Dependency audit (`pnpm audit`), header keamanan (helmet), CORS ketat
+- [x] Dependency audit (`pnpm audit` → 0 temuan; 6 temuan transitif dari tooling Prisma CLI ditutup dengan `overrides`), header keamanan (`@fastify/helmet`: CSP `default-src 'none'`, `frame-ancestors 'none'`, X-Frame-Options DENY, nosniff, no-referrer, CORP same-origin, HSTS bila HTTPS), CORS ketat (tanpa header CORS sama sekali + tolak write lintas origin)
 - [ ] Jalankan `/security-review` di Claude Code dan tindaklanjuti temuannya
 - [ ] Reset MFA oleh ADMIN untuk user yang kehilangan perangkat (dengan verifikasi identitas + audit)
 - [ ] Pindahkan rate limiter login ke Redis jika API dijalankan lebih dari satu instance
@@ -317,6 +319,7 @@ M4 Production     : F12 → F13 → F14
 | 2026-10-01 | F0 | ADR-001/002/004–007 Accepted: TypeScript stack, EVM Sepolia, internal use, >3 operator |
 | 2026-10-01 | F1 | Monorepo + shared/backend/frontend, 49 test hijau. Pending: verifikasi Docker (Docker Desktop gagal start) |
 | 2026-10-02 | F1 | Docker Desktop (Hyper-V) hidup: `docker compose up -d` terverifikasi (port 5434), dev DB pindah ke Docker (ADR-013) |
+| 2026-10-05 | F13a | Inventaris route + fuzz input + test kebocoran rahasia (backend & signer) + test eksposur signer, helmet/CORS, pnpm audit bersih; 709 test hijau |
 | 2026-10-05 | F12 | Laporan Balance/Authorization/Transaction/Audit (awalan kolom SA 13), halaman Reports & Audit Logs, hash chain audit + verifikasi; 698 test hijau |
 | 2026-10-05 | F11 | Broadcast + CHECK_PENDING_TRANSACTIONS (3 konfirmasi, FAILED reverted/replaced, STUCK), TRANSFERRED + refresh saldo, link explorer, checklist E2E Sepolia (docs/08); 680 test hijau |
 | 2026-10-05 | F10 | Signing via vault: signer memverifikasi approval sendiri lewat DB read-only, ECDSA dengan key Buffer, anti-equivocation nonce, Signed Tx Verifier, aturan 3 orang, halaman Signing; 659 test hijau |

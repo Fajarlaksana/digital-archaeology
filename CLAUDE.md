@@ -27,7 +27,7 @@ Kebutuhan lengkap: `system_analysis_digital_archaeology.md`. Revisi & keputusan:
 - TypeScript dikunci `~6.0` (typescript-eslint belum mendukung TS 7). Paket workspace di-import sebagai source TS (`exports` → `src/index.ts`), tanpa build step.
 - Selalu pakai `createLogger` dari `@da/shared` dan lempar `AppError(code, ...)`. Jangan pakai `console.*` (lint error).
 - Role: `SUPER_ADMIN, ADMIN, ANALYST, REVIEWER, AUDITOR`. Endpoint memeriksa **permission** (bukan role) lewat `guards.permission('x:y')`. Peta role ke permission ada di `backend/src/auth/permissions.ts`. MFA wajib untuk SUPER_ADMIN/ADMIN/REVIEWER (ADR-012).
-- Endpoint baru wajib: guard permission, validasi body dengan Zod, dan masuk ke matriks test role × endpoint.
+- Endpoint baru wajib: guard permission, validasi body dengan Zod, dan masuk ke matriks test role × endpoint. Test inventaris route (`tests/integration/security`) gagal untuk route tanpa guard; route publik hanya lewat `config: { public: true }` (ADR-026).
 - Integrasi chain melalui interface `ChainAdapter` (`backend/src/chains`), dipilih dengan `chainAdapterFor(chainType)`. Implementasi pertama: EVM (viem) di testnet Sepolia. Jangan memvalidasi address atau memverifikasi signature di luar adapter (`checkAddress`, `verifyMessage`).
 - Address tidak pernah dihapus, hanya diarsipkan (`archived_at`). Query untuk scan atau proses lain wajib mengecualikan address yang diarsipkan.
 - Baca blockchain hanya lewat `ChainReader` (RPC) dan `ActivityProvider` (explorer) dari `chainClients` (`backend/src/chains/clients.ts`). Inaktivitas dihitung dari transaksi KELUAR (ADR-015). Dalam test pakai `tests/integration/fake-chain.ts`, jangan memanggil jaringan sungguhan (kecuali `*.live.test.ts`).

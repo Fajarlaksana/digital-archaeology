@@ -42,12 +42,16 @@ export function registerAuthRoutes(
     if (request.url.startsWith('/api/auth/')) reply.header('cache-control', 'no-store')
   })
 
-  app.post('/api/auth/login', ownAudit, async (request, reply) => {
-    const body = loginBody.parse(request.body)
-    const { token, state } = await auth.login(body.email, body.password, requestMeta(request))
-    setSessionCookie(reply, token, deps.cookie)
-    return { sessionState: state }
-  })
+  app.post(
+    '/api/auth/login',
+    { config: { ...ownAudit.config, public: true } },
+    async (request, reply) => {
+      const body = loginBody.parse(request.body)
+      const { token, state } = await auth.login(body.email, body.password, requestMeta(request))
+      setSessionCookie(reply, token, deps.cookie)
+      return { sessionState: state }
+    },
+  )
 
   app.post('/api/auth/logout', { ...ownAudit, preHandler: anyState }, async (request, reply) => {
     await auth.logout(request.auth as AuthContext, requestMeta(request))

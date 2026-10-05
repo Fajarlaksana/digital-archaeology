@@ -2,7 +2,14 @@ import { randomUUID } from 'node:crypto'
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify'
 import { ZodError } from 'zod'
 import { AppError, toErrorBody, type Logger } from '@da/shared'
-import { createGuards, registerAuth, type AuthPluginOptions } from './auth/plugin'
+import helmet from '@fastify/helmet'
+import {
+  createGuards,
+  guardsOf,
+  registerAuth,
+  type AuthPluginOptions,
+  type GuardMark,
+} from './auth/plugin'
 import type { Env } from './config/env'
 import { registerAddressRoutes } from './controllers/addresses'
 import { registerAuthRoutes } from './controllers/auth'
@@ -32,6 +39,20 @@ export type AppEnv = Pick<
   'NETWORK_MODE' | 'APP_ENV' | 'APP_ORIGIN' | 'SESSION_TTL_HOURS' | 'COOKIE_SECURE'
 >
 
+/** Every registered route and its protection (verified by the route inventory test, Phase 13). */
+export interface RouteInfo {
+  method: string
+  url: string
+  public: boolean
+  guards: GuardMark[]
+}
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    routeInventory: RouteInfo[]
+  }
+}
+
 export interface AppDeps {
   env: AppEnv
   logger: Logger
@@ -48,6 +69,37 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     // Always generate our own id; never trust a client-supplied one.
     requestIdHeader: false,
     genReqId: () => randomUUID(),
+  })
+
+  const routes: RouteInfo[] = []
+  app.decorate('routeInventory', routes)
+  app.addHook('onRoute', (route) => {
+    for (const method of [route.method].flat()) {
+      if (method === 'HEAD') continue
+      routes.push({
+        method,
+        url: route.url,
+        public: route.config?.public === true,
+        guards: guardsOf(route.preHandler),
+      })
+    }
+  })
+
+  // Security headers for an API that only serves JSON/CSV (Phase 13, ADR-026): nothing may be
+  // framed, scripted or sniffed. HSTS only when cookies are Secure (i.e. served over HTTPS).
+  const secure = deps.env.COOKIE_SECURE
+    ? deps.env.COOKIE_SECURE === 'true'
+    : deps.env.APP_ENV === 'production'
+  await app.register(helmet, {
+    global: true,
+    contentSecurityPolicy: {
+      useDefaults: false,
+      directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"], baseUri: ["'none'"] },
+    },
+    crossOriginResourcePolicy: { policy: 'same-origin' },
+    referrerPolicy: { policy: 'no-referrer' },
+    xFrameOptions: { action: 'deny' },
+    hsts: secure ? { maxAge: 31_536_000, includeSubDomains: true } : false,
   })
 
   app.addHook('onSend', async (request, reply) => {

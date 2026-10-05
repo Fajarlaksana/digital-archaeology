@@ -11,7 +11,9 @@ export interface HealthDeps {
 }
 
 export function registerHealthRoutes(app: FastifyInstance, deps: HealthDeps): void {
-  app.get('/health', async () => ({
+  const open = { config: { public: true } }
+
+  app.get('/health', open, async () => ({
     status: 'ok',
     service: 'backend',
     network_mode: deps.env.NETWORK_MODE,
@@ -19,7 +21,7 @@ export function registerHealthRoutes(app: FastifyInstance, deps: HealthDeps): vo
     timestamp: new Date().toISOString(),
   }))
 
-  app.get('/health/database', async () => {
+  app.get('/health/database', open, async () => {
     try {
       const latencyMs = await deps.checkDatabase()
       return { status: 'ok', latency_ms: latencyMs }
@@ -29,7 +31,7 @@ export function registerHealthRoutes(app: FastifyInstance, deps: HealthDeps): vo
   })
 
   // Per-network: RPC reachable, chain id matches, latest block readable. Never exposes URLs.
-  app.get('/health/rpc', async (_request, reply) => {
+  app.get('/health/rpc', open, async (_request, reply) => {
     if (!deps.checkRpc) return { status: 'not_configured', networks: [] }
     const health = await deps.checkRpc()
     return reply.status(health.status === 'degraded' ? 503 : 200).send(health)

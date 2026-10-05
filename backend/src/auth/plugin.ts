@@ -14,7 +14,29 @@ declare module 'fastify' {
   interface FastifyContextConfig {
     /** Route writes its own, more specific audit events (e.g. auth routes). */
     skipGenericAudit?: boolean
+    /** Intentionally reachable without a session (login, health). Checked by the route inventory test. */
+    public?: boolean
   }
+}
+
+/** Marks guard functions so the route inventory can tell which protection a route has (Phase 13). */
+export const GUARD = Symbol('guard')
+export type GuardMark =
+  | { kind: 'session'; states: SessionState[] }
+  | { kind: 'permission'; permission: Permission }
+  | { kind: 'recentAuth'; maxAgeMs: number }
+
+function mark<T extends object>(fn: T, info: GuardMark): T {
+  return Object.assign(fn, { [GUARD]: info })
+}
+
+/** The guard marks found in a route's preHandler option (function or array). */
+export function guardsOf(preHandler: unknown): GuardMark[] {
+  const list = Array.isArray(preHandler) ? preHandler : preHandler ? [preHandler] : []
+  return list.flatMap((fn) => {
+    const info = (fn as { [GUARD]?: GuardMark })[GUARD]
+    return info ? [info] : []
+  })
 }
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
@@ -105,51 +127,60 @@ export function clearSessionCookie(reply: FastifyReply, options: AuthPluginOptio
 export function createGuards({ audit, now }: Pick<AuthPluginOptions, 'audit' | 'now'>) {
   function session(...allowed: SessionState[]) {
     const states: SessionState[] = allowed.length > 0 ? allowed : ['ACTIVE']
-    return async (request: FastifyRequest): Promise<void> => {
-      const ctx = request.auth
-      if (!ctx) throw new AppError('UNAUTHORIZED', 'Authentication required')
-      if (!states.includes(ctx.session.state)) {
-        if (ctx.session.state === 'MFA_PENDING') {
-          throw new AppError('MFA_REQUIRED', 'Enter your authenticator code to continue')
+    return mark(
+      async (request: FastifyRequest): Promise<void> => {
+        const ctx = request.auth
+        if (!ctx) throw new AppError('UNAUTHORIZED', 'Authentication required')
+        if (!states.includes(ctx.session.state)) {
+          if (ctx.session.state === 'MFA_PENDING') {
+            throw new AppError('MFA_REQUIRED', 'Enter your authenticator code to continue')
+          }
+          if (ctx.session.state === 'MFA_SETUP_REQUIRED') {
+            throw new AppError('MFA_SETUP_REQUIRED', 'Set up two-factor authentication to continue')
+          }
+          throw new AppError('FORBIDDEN', 'Not allowed in the current session state')
         }
-        if (ctx.session.state === 'MFA_SETUP_REQUIRED') {
-          throw new AppError('MFA_SETUP_REQUIRED', 'Set up two-factor authentication to continue')
-        }
-        throw new AppError('FORBIDDEN', 'Not allowed in the current session state')
-      }
-    }
+      },
+      { kind: 'session', states },
+    )
   }
 
   const activeSession = session('ACTIVE')
 
   function permission(required: Permission) {
-    return async (request: FastifyRequest): Promise<void> => {
-      await activeSession(request)
-      const ctx = request.auth as AuthContext
-      if (!ctx.permissions.has(required)) {
-        await audit.create({
-          action: 'ACCESS_DENIED',
-          result: 'DENIED',
-          userId: ctx.user.id,
-          resourceType: 'permission',
-          resourceId: required,
-          ...requestMeta(request),
-          metadata: { route: request.routeOptions.url, method: request.method, roles: ctx.roles },
-        })
-        throw new AppError('FORBIDDEN', 'You do not have permission for this action')
-      }
-    }
+    return mark(
+      async (request: FastifyRequest): Promise<void> => {
+        await activeSession(request)
+        const ctx = request.auth as AuthContext
+        if (!ctx.permissions.has(required)) {
+          await audit.create({
+            action: 'ACCESS_DENIED',
+            result: 'DENIED',
+            userId: ctx.user.id,
+            resourceType: 'permission',
+            resourceId: required,
+            ...requestMeta(request),
+            metadata: { route: request.routeOptions.url, method: request.method, roles: ctx.roles },
+          })
+          throw new AppError('FORBIDDEN', 'You do not have permission for this action')
+        }
+      },
+      { kind: 'permission', permission: required },
+    )
   }
 
   /** Sensitive actions require the user to have re-entered credentials within `maxAgeMs`. */
   function recentAuth(maxAgeMs: number) {
-    return async (request: FastifyRequest): Promise<void> => {
-      await activeSession(request)
-      const reauthAt = (request.auth as AuthContext).session.reauthAt
-      if (!reauthAt || now().getTime() - reauthAt.getTime() > maxAgeMs) {
-        throw new AppError('REAUTH_REQUIRED', 'Please confirm your password to continue')
-      }
-    }
+    return mark(
+      async (request: FastifyRequest): Promise<void> => {
+        await activeSession(request)
+        const reauthAt = (request.auth as AuthContext).session.reauthAt
+        if (!reauthAt || now().getTime() - reauthAt.getTime() > maxAgeMs) {
+          throw new AppError('REAUTH_REQUIRED', 'Please confirm your password to continue')
+        }
+      },
+      { kind: 'recentAuth', maxAgeMs },
+    )
   }
 
   return { session, permission, recentAuth }

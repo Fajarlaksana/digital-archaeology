@@ -311,6 +311,20 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-0
   4. **Verifikasi** melaporkan baris pertama yang rusak (`ROW_MODIFIED` atau `LINK_BROKEN`) dan **head** (sequence + hash terakhir) untuk dicatat di luar sistem.
 - **Batasan (jujur):** hash chain membuat perubahan **terdeteksi**, bukan mustahil: pihak dengan hak owner/superuser DB bisa menghitung ulang seluruh rantai. Penghapusan baris **terbaru** hanya terdeteksi dengan membandingkan head yang dicatat di luar sistem (anchoring eksternal otomatis dicatat untuk Fase 14). Insert audit kini berurutan (lock sampai commit), sehingga transaksi panjang yang menulis audit menahan penulis audit lain; skala sistem ini kecil, jadi diterima.
 
+## ADR-026 — Hardening keamanan (Fase 13a)
+- **Status:** Accepted
+- **Tanggal:** 2026-10-05
+- **Konteks:** roadmap Fase 13 + SA 17. Fase dibagi: 13a (test keamanan & hardening), 13b (fitur operasional). Pilihan pemilik projek untuk 13b: notifikasi Telegram, metrics Prometheus ber-token, reset MFA SUPER_ADMIN hanya lewat CLI.
+- **Keputusan:**
+  1. **Inventaris route sebagai kontrak keamanan.** Guard diberi penanda (`GUARD`: session / permission / recentAuth) dan `buildApp` mencatat setiap route beserta guard-nya (`app.routeInventory`). Test gagal jika ada route `/api` tanpa guard, route publik selain login (`config.public`), route di luar `/api/auth/*` tanpa permission, atau aksi sensitif tanpa konfirmasi ulang. Route baru otomatis ikut diperiksa. Terbukti lewat mutation check (guard dicabut → test gagal).
+  2. **Fuzz input** pada semua route POST/PATCH dengan body rusak (array, string, field asing, JSON terpotong, text/plain, > 1 MB): wajib 4xx, tanpa memantulkan input.
+  3. **Test kebocoran rahasia end-to-end** di backend dan signer: seluruh siklus key lalu dump semua tabel + log + response. Pengecualian satu-satunya: response reveal (ADR-009).
+  4. **Header:** `@fastify/helmet` untuk API yang hanya melayani JSON/CSV — CSP `default-src 'none'; frame-ancestors 'none'; base-uri 'none'`, X-Frame-Options DENY, nosniff, Referrer-Policy no-referrer, CORP same-origin; HSTS (1 tahun, includeSubDomains) hanya bila cookie Secure (HTTPS).
+  5. **CORS:** tidak ada plugin CORS dan tidak ada header `Access-Control-Allow-*` (frontend same-origin lewat proxy). Ditambah cek Origin untuk semua request yang mengubah data (Fase 3).
+  6. **Dependency:** `pnpm audit` wajib bersih; 6 temuan (lodash, mysql2, deepmerge-ts) semuanya transitif dari tooling Prisma CLI, ditutup dengan `overrides` (Prisma generate/migrate tetap berjalan).
+  7. **Eksposur signer** diuji dengan koneksi nyata ke semua interface IPv4 non-loopback mesin.
+- **Batasan:** `/security-review` (skill Claude Code) dijalankan oleh pemilik projek dari terminal; temuannya ditindaklanjuti terpisah. Header frontend (CSP untuk aset SPA) diatur di reverse proxy produksi (Fase 14).
+
 ---
 
 ## Jawaban pertanyaan terbuka (02-analysis bagian 5)
