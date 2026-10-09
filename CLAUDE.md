@@ -40,6 +40,7 @@ Kebutuhan lengkap: `system_analysis_digital_archaeology.md`. Revisi & keputusan:
 - Broadcast hanya manual oleh SUPER_ADMIN setelah verifikasi ulang raw tx + cek nonce/fee/saldo; pelacakan konfirmasi lewat `domain/confirmation.ts` dan job `check-pending-transactions`. Tx tanpa receipt ditandai STUCK, tidak pernah otomatis FAILED karena waktu (ADR-024).
 - Nilai fiat: hitung hanya dengan `domain/valuation.ts` (decimal.js), simpan sebagai string/NUMERIC, dan tampilkan dengan `formatFiat` (tanpa `Number`). Nilai testnet wajib berlabel SIMULASI dan dijumlahkan terpisah (ADR-016).
 - Export CSV wajib lewat `lib/csv.ts` (proteksi formula injection).
+- Produksi (ADR-028): `compose.prod.yml` + `docker/Dockerfile`; env per service di `deploy/env/` (jangan di-commit). Variabel keamanan baru wajib dicek di `productionProblems` (fail-fast `CONFIG_INSECURE`). Transfer pertama mainnet ke destination dibatasi (bukan sweep, ≤ `MAINNET_FIRST_TRANSFER_MAX_VALUE`) sampai ada tx CONFIRMED — jangan dilonggarkan.
 - Laporan baru memakai awalan kolom `chain_` / `estimate_` / `auth_` / `status_` (SA 13). Audit log ber-hash chain lewat trigger DB (`audit_logs_chain`); jangan menulis `hash`/`prev_hash`/`sequence` dari aplikasi dan jangan menghapus trigger/fungsi itu (ADR-025).
 
 ## Perintah

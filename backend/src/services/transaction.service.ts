@@ -5,7 +5,7 @@ import type { ChainReader } from '../chains/types'
 import { evaluateConfirmation } from '../domain/confirmation'
 import { fromBaseUnit, toBaseUnit } from '../domain/money'
 import { checkStillValid, planTransfer, type PlanError } from '../domain/transfer-plan'
-import { fiatValue } from '../domain/valuation'
+import { compareFiat, fiatValue } from '../domain/valuation'
 import type { TransactionStatus } from '../generated/prisma/client'
 import { fromDbAmount, fromDbAmountOrNull } from '../repositories/amount'
 import type { AuditLogRepository } from '../repositories/audit-log.repository'
@@ -121,6 +121,11 @@ export function createTransactionService(deps: {
   feeMarginPercent: number
   approvalTtlMs: number
   networkMode: 'testnet' | 'mainnet'
+  /**
+   * Mainnet only (ADR-028): until one transfer to a destination is CONFIRMED, transfers to it must
+   * be test transfers worth at most this much (fiat).
+   */
+  mainnetFirstTransferMax: string
   /** Blocks on top of (and including) the inclusion block before CONFIRMED (default 3). */
   requiredConfirmations: number
   /** Without a receipt for this long, a broadcast transaction is flagged STUCK. */
@@ -418,6 +423,30 @@ export function createTransactionService(deps: {
         throw new AppError(e.code, e.message)
       }
       const plan = planned.plan
+
+      // Mainnet: the first transfer to a destination proves the path with a small amount (ADR-028).
+      if (!network.isTestnet && !(await transactions.hasConfirmedTo(destination.id))) {
+        if (plan.sweep) {
+          throw new AppError(
+            'VALIDATION_ERROR',
+            'First mainnet transfer to this destination must be a small test transfer, not a sweep',
+          )
+        }
+        const price = await deps.prices.latestSnapshot(asset.id, deps.fiatCurrency)
+        if (!price) {
+          throw new AppError(
+            'VALIDATION_ERROR',
+            'A price is needed to check the first-transfer limit for this asset',
+          )
+        }
+        const value = fiatValue(plan.amount, asset.decimals, price.price.toFixed())
+        if (compareFiat(value, deps.mainnetFirstTransferMax) > 0) {
+          throw new AppError(
+            'VALIDATION_ERROR',
+            `First mainnet transfer to this destination may be worth at most ${deps.mainnetFirstTransferMax} ${deps.fiatCurrency}`,
+          )
+        }
+      }
 
       const unsigned = chainAdapterFor(network.chainType).buildUnsignedTransfer({
         chainId: network.chainId!,

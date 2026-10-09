@@ -1,0 +1,22 @@
+# Never send secrets, dependencies or local build output into an image build context.
+**/node_modules
+**/dist
+**/coverage
+**/*.tsbuildinfo
+backend/src/generated
+signer/src/generated
+.env
+.env.*
+!.env.example
+deploy/env/*.env
+deploy/rclone/
+backups/
+secrets/
+*.key
+*.pem
+*.age
+.git
+.claude
+.vscode
+.idea
+**/*.log

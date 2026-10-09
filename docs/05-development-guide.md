@@ -227,6 +227,8 @@ APPROVAL_TTL_MINUTES=30              # approval transaksi berlaku selama ini, la
 TX_CONFIRMATIONS=3                   # blok sebelum CONFIRMED
 TX_CHECK_INTERVAL_SECONDS=30         # interval job CHECK_PENDING_TRANSACTIONS
 TX_STUCK_MINUTES=30                  # tanpa receipt selama ini = STUCK (tidak otomatis gagal)
+MAINNET_FIRST_TRANSFER_MAX_VALUE=25  # mainnet: transfer pertama ke destination maks. senilai ini, bukan sweep
+TRUST_PROXY=                         # CIDR reverse proxy (wajib di produksi), kosong di dev
 TELEGRAM_BOT_TOKEN=                  # alert keamanan (isi keduanya atau kosongkan keduanya)
 TELEGRAM_CHAT_ID=
 METRICS_TOKEN=                       # >= 32 karakter; kosong = GET /metrics 404
@@ -241,6 +243,10 @@ KEY_REVEAL_ENABLED=true              # set false di produksi jika reveal tidak d
 **Catatan:** tidak ada env untuk passphrase vault, dan memang tidak boleh ada. Passphrase hanya diketik SUPER_ADMIN saat unlock.
 
 `.env` tidak pernah di-commit. `.env.example` hanya berisi nama variabel tanpa nilai rahasia.
+
+**Produksi** (Fase 14, ADR-028): env dipisah per service di `deploy/env/<service>.env` (template `*.env.example`). Dengan `APP_ENV=production`, backend dan signer menolak start (`CONFIG_INSECURE`) bila ada nilai dev, opt-out keamanan, atau env milik service lain. Setiap variabel baru yang menyangkut keamanan wajib ditambahkan ke `productionProblems` (`backend/src/config/env.ts` / `signer/src/config/env.ts`) beserta test-nya.
+
+Image produksi: `docker/Dockerfile` (target `backend`, `signer`, `web`) dan `docker/Dockerfile.backup`. Uji build lokal: `docker build -f docker/Dockerfile --target backend .`. Script backup/restore ada di `deploy/backup/` (bash, LF). Runbook: [06-manual-guide.md §14](06-manual-guide.md).
 
 ## 7. Definition of Done (setiap tugas)
 

@@ -71,6 +71,8 @@ export interface ServiceConfig {
   environmentLabel?: string
   /** Login/MFA throttling shared by all API instances (Redis); in-memory when omitted. */
   rateLimiters?: RateLimiterFactory
+  /** Mainnet: fiat cap for the first (test) transfer to each destination (default 25). */
+  mainnetFirstTransferMax?: string
   /** Phase 11: confirmations before CONFIRMED (default 3) and the STUCK threshold (30 min). */
   txConfirmations?: number
   txStuckMs?: number
@@ -172,6 +174,7 @@ export function createServices(db: Database, config: ServiceConfig) {
       feeMarginPercent: config.feeMarginPercent ?? 20,
       approvalTtlMs: config.approvalTtlMs ?? 30 * 60_000,
       networkMode: config.networkMode,
+      mainnetFirstTransferMax: config.mainnetFirstTransferMax ?? '25',
       requiredConfirmations: config.txConfirmations ?? 3,
       stuckAfterMs: config.txStuckMs ?? 30 * 60_000,
       // After a confirmed transfer: re-read the address's balances right away and revalue them.

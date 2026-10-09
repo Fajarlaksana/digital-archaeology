@@ -49,3 +49,35 @@ export function parseEnv(source: NodeJS.ProcessEnv): SignerEnv {
   }
   return result.data
 }
+
+/**
+ * Refuses an unsafe production configuration (Phase 14, ADR-028). Problems name variables only.
+ */
+export function productionProblems(env: SignerEnv, raw: NodeJS.ProcessEnv): string[] {
+  if (env.APP_ENV !== 'production') return []
+  const problems: string[] = []
+  const devValue = (value: string | undefined) => Boolean(value && /dev_only|changeme/i.test(value))
+  if (devValue(env.VAULT_DATABASE_URL))
+    problems.push('VAULT_DATABASE_URL uses a development password')
+  if (env.SIGNER_ALLOW_NON_LOOPBACK === 'true') {
+    problems.push(
+      'SIGNER_ALLOW_NON_LOOPBACK must not be used (share the backend network namespace instead)',
+    )
+  }
+  if (!env.APP_DATABASE_URL_READONLY) {
+    problems.push('APP_DATABASE_URL_READONLY is required (transaction signing)')
+  } else {
+    const url = new URL(env.APP_DATABASE_URL_READONLY)
+    if (decodeURIComponent(url.username) !== 'da_signer_ro') {
+      problems.push('APP_DATABASE_URL_READONLY must use the read-only login da_signer_ro')
+    }
+    if (devValue(env.APP_DATABASE_URL_READONLY)) {
+      problems.push('APP_DATABASE_URL_READONLY uses a development password')
+    }
+  }
+  // The signer never needs the application owner login or the backend's secrets.
+  for (const name of ['DATABASE_URL', 'MFA_ENCRYPTION_KEY', 'REDIS_URL']) {
+    if (raw[name]) problems.push(`${name} must not be in the signer environment`)
+  }
+  return problems
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseEnv } from '../../src/config/env'
+import { parseEnv, productionProblems } from '../../src/config/env'
 
 const VALID = {
   DATABASE_URL: 'postgresql://da:pw@127.0.0.1:5432/digital_archaeology',
@@ -96,5 +96,56 @@ describe('parseEnv', () => {
   it('coerces and validates the port', () => {
     expect(parseEnv({ ...VALID, BACKEND_PORT: '4100' }).BACKEND_PORT).toBe(4100)
     expect(() => parseEnv({ ...VALID, BACKEND_PORT: '70000' })).toThrow(/BACKEND_PORT/)
+  })
+})
+
+describe('TRUST_PROXY', () => {
+  it('accepts IPs and CIDRs, rejects wildcards', () => {
+    expect(parseEnv({ ...VALID, TRUST_PROXY: '172.30.0.0/24, 10.0.0.5' }).TRUST_PROXY).toBe(
+      '172.30.0.0/24, 10.0.0.5',
+    )
+    expect(() => parseEnv({ ...VALID, TRUST_PROXY: 'true' })).toThrow(/TRUST_PROXY/)
+    expect(() => parseEnv({ ...VALID, TRUST_PROXY: '*' })).toThrow(/TRUST_PROXY/)
+  })
+})
+
+describe('productionProblems (Phase 14)', () => {
+  const PROD = {
+    APP_ENV: 'production',
+    DATABASE_URL: 'postgresql://da:Str0ng-Secret@postgres:5432/digital_archaeology',
+    REDIS_URL: 'redis://:redis-secret@redis:6379',
+    MFA_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
+    APP_ORIGIN: 'https://da.example.com',
+    SIGNER_HMAC_SECRET: 's'.repeat(48),
+    TRUST_PROXY: '172.30.0.0/24',
+  }
+
+  it('accepts a proper production configuration and ignores development', () => {
+    expect(productionProblems(parseEnv(PROD), PROD)).toEqual([])
+    expect(productionProblems(parseEnv(VALID), VALID)).toEqual([])
+  })
+
+  it('names every unsafe setting — without revealing values', () => {
+    const raw = {
+      ...PROD,
+      DATABASE_URL: 'postgresql://da:da_dev_only@postgres:5432/digital_archaeology',
+      REDIS_URL: 'redis://redis:6379',
+      APP_ORIGIN: 'http://da.example.com',
+      COOKIE_SECURE: 'false',
+      SIGNER_HMAC_SECRET: '',
+      TRUST_PROXY: '',
+      VAULT_DATABASE_URL: 'postgresql://da_vault:x@postgres/da_vault',
+    }
+    const problems = productionProblems(parseEnv(raw), raw)
+    expect(problems).toEqual([
+      'DATABASE_URL uses a development password',
+      'REDIS_URL must include a password',
+      'APP_ORIGIN must be https',
+      'COOKIE_SECURE must not be false',
+      'SIGNER_HMAC_SECRET is required',
+      'TRUST_PROXY is required (the reverse proxy subnet)',
+      'VAULT_DATABASE_URL must not be in the backend environment',
+    ])
+    expect(problems.join(' ')).not.toMatch(/da_dev_only|da_vault:x/)
   })
 })

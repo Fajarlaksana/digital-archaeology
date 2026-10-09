@@ -46,7 +46,12 @@ describe.skipIf(!testDatabaseUrl)('transaction preview & approval', () => {
 
   /** Inventory address with verified ownership, an APPROVED destination and its key in the vault. */
   async function scenario(
-    opts: { verified?: boolean; destination?: 'APPROVED' | 'PENDING_APPROVAL'; key?: boolean } = {},
+    opts: {
+      verified?: boolean
+      destination?: 'APPROVED' | 'PENDING_APPROVAL'
+      key?: boolean
+      mainnet?: boolean
+    } = {},
   ) {
     const now = h.now()
     const network = await db.network.create({
@@ -54,7 +59,7 @@ describe.skipIf(!testDatabaseUrl)('transaction preview & approval', () => {
         name: `tx-${randomUUID().slice(0, 8)}`,
         displayName: 'Tx net',
         chainId: randomInt(1_000_000, 2_000_000_000),
-        isTestnet: true,
+        isTestnet: !opts.mainnet,
         assets: {
           create: [
             { isNative: true, symbol: 'ETH', name: 'Ether', decimals: 18 },
@@ -791,6 +796,80 @@ describe.skipIf(!testDatabaseUrl)('transaction preview & approval', () => {
           data: { status: 'CONFIRMED', confirmations: 3 },
         }),
       ).rejects.toThrow(/transactions_confirmed_recorded/)
+    })
+  })
+
+  describe('mainnet first transfer (Phase 14, ADR-028)', () => {
+    it('the first transfer to a destination must be a small test transfer; afterwards a sweep is allowed', async () => {
+      h = await createHarness(db, { networkMode: 'mainnet' })
+      const { token } = await userWith(['ANALYST'])
+      const s = await scenario({ mainnet: true })
+      h.chain.restrictTo([s.network.id])
+
+      const sweep = await preview(token, s)
+      expect(sweep.statusCode).toBe(400)
+      expect(sweep.json().error.message).toMatch(/must be a small test transfer, not a sweep/)
+      // 0.1 ETH = $200 > $25 cap
+      expect((await preview(token, s, { amount: '0.1' })).json().error.message).toMatch(
+        /at most 25 USD/,
+      )
+      // 0.01 ETH = $20 ≤ $25
+      const test = await preview(token, s, { amount: '0.01' })
+      expect(test.statusCode).toBe(201)
+      expect(test.json().transaction.sweep).toBe(false)
+      await h.call('POST', `/api/transactions/${test.json().transaction.id}/cancel`, token, {
+        reason: 'pretend it was confirmed',
+      })
+
+      // Once one transfer to the destination is CONFIRMED, sweeps are allowed.
+      const confirmed = await db.transaction.findUniqueOrThrow({
+        where: { id: test.json().transaction.id },
+      })
+      await db.transaction.create({
+        data: {
+          addressId: confirmed.addressId,
+          networkId: confirmed.networkId,
+          assetId: confirmed.assetId,
+          destinationId: confirmed.destinationId,
+          amount: confirmed.amount,
+          networkFee: confirmed.networkFee,
+          gasLimit: confirmed.gasLimit,
+          maxFeePerGas: confirmed.maxFeePerGas,
+          maxPriorityFeePerGas: confirmed.maxPriorityFeePerGas,
+          nonce: confirmed.nonce,
+          recipient: confirmed.recipient,
+          sweep: false,
+          unsignedPayload: confirmed.unsignedPayload as object,
+          unsignedHash: confirmed.unsignedHash,
+          signedPayload: '0x02',
+          txHash: `0x${'9'.repeat(64)}`,
+          status: 'CONFIRMED',
+          broadcastAt: h.now(),
+          confirmedAt: h.now(),
+          blockNumber: 10n,
+          confirmations: 3,
+          createdById: confirmed.createdById,
+        },
+      })
+      expect((await preview(token, s)).statusCode).toBe(201)
+    })
+
+    it('refuses the first mainnet transfer when the asset has no price', async () => {
+      h = await createHarness(db, { networkMode: 'mainnet' })
+      const { token } = await userWith(['ANALYST'])
+      const s = await scenario({ mainnet: true })
+      h.chain.restrictTo([s.network.id])
+      await db.priceSnapshot.deleteMany({ where: { assetId: s.eth.id } })
+      expect((await preview(token, s, { amount: '0.001' })).json().error.message).toMatch(
+        /price is needed/,
+      )
+    })
+
+    it('testnet is not restricted', async () => {
+      h = await createHarness(db)
+      const { token } = await userWith(['ANALYST'])
+      const s = await scenario()
+      expect((await preview(token, s)).statusCode).toBe(201)
     })
   })
 

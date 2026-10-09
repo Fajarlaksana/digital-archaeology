@@ -2,7 +2,7 @@
 
 Sistem inventarisasi, verifikasi kepemilikan, dan pemulihan aset kripto yang sudah lama tidak aktif. Sistem ini **hanya** untuk address milik sendiri atau address yang punya mandat/otorisasi sah.
 
-> **Status saat ini:** Fase 1–12 selesai secara kode (inventaris, scan, valuasi, Key Vault, verifikasi kepemilikan, destination whitelist, eligibility, preview & approval, signing, broadcast & konfirmasi, laporan & audit log ber-hash chain). Milestone M1–M3 menunggu uji manual di Sepolia: [docs/08-e2e-sepolia.md](docs/08-e2e-sepolia.md). Berikutnya: **Fase 13 — Hardening Keamanan & Monitoring**.
+> **Status saat ini:** Fase 1–14 selesai secara kode (inventaris, scan, valuasi, Key Vault, verifikasi kepemilikan, destination whitelist, eligibility, preview & approval, signing, broadcast & konfirmasi, laporan & audit log ber-hash chain, hardening & monitoring, deploy produksi + backup). Sebelum tag `v1.0.0` dan mainnet: uji manual di Sepolia ([docs/08-e2e-sepolia.md](docs/08-e2e-sepolia.md)), lalu deploy, uji restore, dan drill vault sesuai runbook ([docs/06-manual-guide.md §14](docs/06-manual-guide.md)).
 > Update baris ini setiap kali sebuah fase selesai (lihat [docs/03-roadmap.md](docs/03-roadmap.md)).
 
 ---

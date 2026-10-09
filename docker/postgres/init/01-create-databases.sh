@@ -13,8 +13,11 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<-EOSQL
   REVOKE CONNECT ON DATABASE ${VAULT_DB_NAME} FROM PUBLIC;
 EOSQL
 
-# Prisma `migrate dev` needs to create a shadow database.
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<-EOSQL
+# Prisma `migrate dev` needs to create a shadow database (development only; production sets
+# GRANT_CREATEDB=false because `migrate deploy` does not need it).
+if [ "${GRANT_CREATEDB:-true}" = "true" ]; then
+  psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<-EOSQL
   ALTER USER ${APP_DB_USER} CREATEDB;
   ALTER USER ${VAULT_DB_USER} CREATEDB;
 EOSQL
+fi

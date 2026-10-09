@@ -30,3 +30,9 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Production deployment secrets & data (Phase 14) — templates are deploy/env/*.env.example
+deploy/env/*.env
+deploy/rclone/
+deploy/backup/age-recipients.txt
+backups/

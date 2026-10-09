@@ -26,6 +26,17 @@ const envSchema = z
       .default('info'),
     BACKEND_HOST: z.string().min(1).default('127.0.0.1'),
     BACKEND_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+    /**
+     * Reverse proxy addresses/CIDRs whose X-Forwarded-For is trusted (production: Caddy's IP).
+     * Unset = trust nobody (direct connections). Never a wildcard: clients could spoof their IP
+     * and dodge the per-IP login limit.
+     */
+    TRUST_PROXY: optional(
+      z
+        .string()
+        .trim()
+        .regex(/^[0-9a-fA-F:./]+(\s*,\s*[0-9a-fA-F:./]+)*$/, 'comma-separated IPs / CIDRs'),
+    ),
     DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
     REDIS_URL: z.url({ protocol: /^rediss?$/ }),
     SEPOLIA_RPC_URL: optional(z.url({ protocol: /^https?$/ })),
@@ -84,6 +95,13 @@ const envSchema = z
     SIGNER_URL: z.url({ protocol: /^https?$/ }).default('http://127.0.0.1:4000'),
     /** Explicit, logged opt-out for a private container network until TLS is set up (Phase 14). */
     SIGNER_ALLOW_INSECURE_HTTP: z.enum(['true', 'false']).default('false'),
+
+    /** Mainnet: the first transfer to each destination must be a test transfer worth at most this. */
+    MAINNET_FIRST_TRANSFER_MAX_VALUE: z
+      .string()
+      .trim()
+      .regex(/^\d+(\.\d{1,8})?$/, 'must be a decimal amount')
+      .default('25'),
 
     // --- Monitoring (Phase 13b) ---
     /** Bearer token for GET /metrics (Prometheus). Unset = /metrics answers 404. */
@@ -145,4 +163,31 @@ export function parseEnv(source: NodeJS.ProcessEnv): Env {
     throw new Error(`Invalid or missing environment variables: ${names.join(', ')}`)
   }
   return result.data
+}
+
+/**
+ * Refuses an unsafe production configuration (Phase 14, ADR-028). Returns problems as
+ * sentences that name variables only — never their values.
+ */
+export function productionProblems(env: Env, raw: NodeJS.ProcessEnv): string[] {
+  if (env.APP_ENV !== 'production') return []
+  const problems: string[] = []
+  const devValue = (value: string | undefined) => Boolean(value && /dev_only|changeme/i.test(value))
+  if (devValue(env.DATABASE_URL)) problems.push('DATABASE_URL uses a development password')
+  if (!new URL(env.REDIS_URL).password) problems.push('REDIS_URL must include a password')
+  if (new URL(env.APP_ORIGIN).protocol !== 'https:') problems.push('APP_ORIGIN must be https')
+  if (env.COOKIE_SECURE === 'false') problems.push('COOKIE_SECURE must not be false')
+  if (!env.SIGNER_HMAC_SECRET) problems.push('SIGNER_HMAC_SECRET is required')
+  // Behind the reverse proxy every client would otherwise share the proxy's IP (login limits, audit).
+  if (!env.TRUST_PROXY) problems.push('TRUST_PROXY is required (the reverse proxy subnet)')
+  if (env.SIGNER_ALLOW_INSECURE_HTTP === 'true') {
+    problems.push(
+      'SIGNER_ALLOW_INSECURE_HTTP must not be used (the signer shares the backend network namespace)',
+    )
+  }
+  // Separation of duties (ADR-008): vault credentials belong to the signer only.
+  for (const name of ['VAULT_DATABASE_URL', 'APP_DATABASE_URL_READONLY']) {
+    if (raw[name]) problems.push(`${name} must not be in the backend environment`)
+  }
+  return problems
 }

@@ -253,6 +253,11 @@ export function createTransactionRepository(db: Database) {
       return result.count === 1
     },
 
+    /** True once at least one transfer to this destination is CONFIRMED on chain. */
+    async hasConfirmedTo(destinationId: string): Promise<boolean> {
+      return (await db.transaction.count({ where: { destinationId, status: 'CONFIRMED' } })) > 0
+    },
+
     /** Transactions on their way to a block (checked by CHECK_PENDING_TRANSACTIONS). */
     inFlight(): Promise<TransactionWithContext[]> {
       return db.transaction.findMany({

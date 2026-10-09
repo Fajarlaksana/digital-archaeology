@@ -298,13 +298,13 @@ M4 Production     : F12 → F13 → F14
 
 ## Fase 14 — Deploy & Operasional · M
 
-- [ ] Dockerfile produksi + compose/infra target
-- [ ] Secret dari secret manager/env server (bukan file di repo)
-- [ ] Backup DB terjadwal (aplikasi + `da_vault`) + uji restore
-- [ ] **Uji pemulihan vault**: restore `da_vault` di mesin bersih, lalu buka dengan recovery passphrase, lalu sign tx testnet
-- [ ] Prosedur penyimpanan recovery passphrase (offline, fisik) tertulis di runbook
-- [ ] Runbook operasional (tambahkan ke [06-manual-guide.md](06-manual-guide.md))
-- [ ] Aktifkan mainnet lewat konfigurasi eksplisit. **Transfer pertama di mainnet dimulai dengan jumlah kecil**
+- [x] Dockerfile produksi + compose/infra target (`docker/Dockerfile`, `compose.prod.yml`, Caddy)
+- [x] Secret dari secret manager/env server (bukan file di repo): `deploy/env/<service>.env` per service + fail-fast `CONFIG_INSECURE`
+- [x] Backup DB terjadwal (aplikasi + `da_vault`) + uji restore (`backup.sh` age + rclone, `restore-check.sh`; diuji ke Docker lokal)
+- [x] **Uji pemulihan vault**: `vault:drill --restored-copy` (restore → recovery passphrase → cek semua key → sign tx Sepolia dummy); diuji pada salinan restore lokal. *Drill di mesin bersih produksi dilakukan pemilik projek (runbook 14.5)*
+- [x] Prosedur penyimpanan recovery passphrase (offline, fisik) tertulis di runbook
+- [x] Runbook operasional (tambahkan ke [06-manual-guide.md](06-manual-guide.md))
+- [x] Aktifkan mainnet lewat konfigurasi eksplisit. **Transfer pertama di mainnet dimulai dengan jumlah kecil** — ditegakkan sistem (bukan sweep, ≤ `MAINNET_FIRST_TRANSFER_MAX_VALUE` sampai ada tx CONFIRMED). *Aktivasi sungguhan oleh pemilik projek setelah E2E Sepolia (runbook 14.10)*
 
 **DoD — Milestone M4 tercapai:** tag `v1.0.0`.
 
@@ -319,6 +319,7 @@ M4 Production     : F12 → F13 → F14
 | 2026-10-01 | F0 | ADR-001/002/004–007 Accepted: TypeScript stack, EVM Sepolia, internal use, >3 operator |
 | 2026-10-01 | F1 | Monorepo + shared/backend/frontend, 49 test hijau. Pending: verifikasi Docker (Docker Desktop gagal start) |
 | 2026-10-02 | F1 | Docker Desktop (Hyper-V) hidup: `docker compose up -d` terverifikasi (port 5434), dev DB pindah ke Docker (ADR-013) |
+| 2026-10-09 | F14 | Image produksi (backend/signer/web Caddy), compose.prod.yml (signer di namespace backend, hardening), fail-fast konfigurasi produksi, TRUST_PROXY, backup age + offsite rclone + restore-check (cek rantai audit), drill pemulihan vault, guard transfer pertama mainnet, runbook §14 |
 | 2026-10-09 | F13b | Reset MFA (ADMIN + CLI), rate limiter Redis, alert Telegram via audit, metrics Prometheus + /health/vault + /health/ready, review berkala AUDITOR; 732 test hijau |
 | 2026-10-05 | F13a | Inventaris route + fuzz input + test kebocoran rahasia (backend & signer) + test eksposur signer, helmet/CORS, pnpm audit bersih; 709 test hijau |
 | 2026-10-05 | F12 | Laporan Balance/Authorization/Transaction/Audit (awalan kolom SA 13), halaman Reports & Audit Logs, hash chain audit + verifikasi; 698 test hijau |

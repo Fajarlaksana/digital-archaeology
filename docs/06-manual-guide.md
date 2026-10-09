@@ -393,11 +393,108 @@ Notifikasi Telegram (bila dikonfigurasi) mengirim peringatan langsung untuk aksi
 | Import key ditolak | Key tidak cocok dengan address mana pun di inventory | Cek address & derivation path, pastikan address sudah terdaftar |
 | Unlock gagal | Passphrase salah | Coba lagi dengan hati-hati, atau gunakan recovery passphrase (8.5) |
 | Approval kedaluwarsa | Fee/saldo berubah | Buat preview baru |
-| Tx ditandai STUCK | Fee terlalu rendah saat padat | Tunggu; bila perlu speed-up/cancel manual dari wallet dengan nonce yang sama. Sistem menandai FAILED (*replaced or dropped*) bila nonce dipakai tx lain. Lihat runbook (Fase 14) |
+| Preview mainnet ditolak "First mainnet transfer…" | Destination belum pernah menerima tx CONFIRMED | Kirim transfer uji kecil (bukan sweep, ≤ `MAINNET_FIRST_TRANSFER_MAX_VALUE`) dulu (14.10) |
+| Backend/signer berhenti `CONFIG_INSECURE` | Konfigurasi produksi tidak aman | Perbaiki variabel yang disebut di log (14.1) |
+| Tx ditandai STUCK | Fee terlalu rendah saat padat | Tunggu; bila perlu speed-up/cancel manual dari wallet dengan nonce yang sama. Sistem menandai FAILED (*replaced or dropped*) bila nonce dipakai tx lain. Lihat 14.7 |
 
-## 14. Runbook operasional · *Fase 14*
+## 14. Runbook operasional · *Fase 14* ✅ · Operator server (+ SUPER_ADMIN untuk vault)
 
-*(Diisi saat Fase 14: deploy, backup/restore aplikasi + vault, uji pemulihan vault dengan recovery passphrase, rotasi secret, penanganan tx stuck, insiden keamanan.)*
+Topologi (ADR-028): satu VPS, Docker Compose (`compose.prod.yml`). Hanya Caddy yang membuka port 80/443. Signer berjalan di network namespace backend dan hanya bisa dihubungi backend lewat `127.0.0.1`. Di bawah ini `dc` = `docker compose -f compose.prod.yml`.
+
+### 14.1 Deploy pertama
+
+1. **Server:** Linux terbaru + Docker Engine & Compose plugin, firewall hanya membuka 22 (SSH key saja), 80, dan 443. Arahkan DNS domain ke IP server.
+2. **Kode:** `git clone` repo ke `/opt/digital-archaeology`, checkout tag rilis.
+3. **Secret:** salin setiap `deploy/env/*.env.example` menjadi `deploy/env/*.env`, isi nilainya, lalu `chmod 600 deploy/env/*.env`. Buat nilai acak dengan `openssl rand -hex 32` (`MFA_ENCRYPTION_KEY`: `openssl rand -base64 32`; password DB: `openssl rand -base64 32 | tr -d '/+='`). Password di `postgres.env` harus sama dengan yang ada di URL `backend.env`/`signer.env`; `SIGNER_HMAC_SECRET` sama di backend & signer. File ini **tidak pernah** masuk git, chat, atau email.
+4. **Backup key:** di komputer offline buat identity age `age-keygen -o da-backup-identity.txt` lalu simpan file itu di dua media offline (lihat 14.4). Salin hanya kunci publiknya (`age-keygen -y …`) ke `deploy/backup/age-recipients.txt` di server.
+5. **Build & migrasi:** `dc build`, lalu `dc up -d postgres redis`, `dc run --rm migrate-app`, `dc run --rm migrate-vault`.
+6. **Start:** `dc up -d`. Bila ada konfigurasi tidak aman, backend/signer berhenti dengan `CONFIG_INSECURE` (lihat `dc logs backend signer`: pesan menyebut nama variabel yang salah).
+7. **User:** `dc exec backend node --import tsx scripts/create-user.ts --email … --name … --role SUPER_ADMIN` (satu-satunya cara membuat SUPER_ADMIN; password diketik tanpa tampil), lalu login, aktifkan MFA, dan buat user lain dari UI. CLI lain (`scripts/reset-mfa.ts`) juga dijalankan dengan `dc exec backend …`, bukan `dc run`, karena backend memakai IP tetap.
+8. **Vault:** SUPER_ADMIN melakukan init vault dari UI (8.1). Tulis recovery passphrase sesuai 14.4.
+9. **Cek:** `curl -s --resolve DOMAIN:443:127.0.0.1 https://DOMAIN/health/ready` dari server harus `ok`. Dari luar, `/metrics` dan `/health` harus 404.
+
+### 14.2 Upgrade
+
+1. Jalankan backup manual dulu (14.3).
+2. `git fetch --tags && git checkout <tag baru>`, lalu `dc build`.
+3. `dc run --rm migrate-app && dc run --rm migrate-vault` (migrasi hanya maju; jangan pernah `prisma migrate reset`).
+4. `dc up -d`. Signer ikut restart sehingga **vault terkunci**; SUPER_ADMIN perlu unlock lagi bila akan signing.
+5. Rollback = checkout tag lama + `dc up -d`, hanya bila migrasi baru kompatibel. Bila tidak, restore dari backup (14.3).
+
+### 14.3 Backup & uji restore
+
+- **Jadwal** (crontab root di host, 01:30 WIB):
+  `30 1 * * * cd /opt/digital-archaeology && docker compose -f compose.prod.yml run --rm backup >> /var/log/da-backup.log 2>&1`
+- Hasil: `backups/<UTC timestamp>/` berisi `globals.sql.age`, `app.dump.age`, `vault.dump.age`, `MANIFEST`, dan `SHA256SUMS`. Dump langsung dienkripsi age, tanpa plaintext di disk. Backup lokal lebih tua dari `RETENTION_DAYS` dihapus. Bila `RCLONE_REMOTE` diisi (config `deploy/rclone/rclone.conf`), salinan dikirim ke offsite lalu diverifikasi. Pakai bucket dengan **object lock / lifecycle** dan credential yang tidak bisa menghapus, karena server tidak pernah menghapus file di offsite.
+- **Pantau:** baris terakhir log harus `backup: OK <timestamp>`. Bila muncul `FAILED`, tangani hari itu juga.
+- **Uji restore** (minimal bulanan, dan setelah upgrade besar). Mount identity dari media offline hanya selama uji:
+  ```bash
+  dc run --rm -v /media/usb/da-backup-identity.txt:/config/age-identity.txt:ro \
+    --entrypoint restore-check.sh backup <timestamp>
+  ```
+  Hasil harus `OK`: checksum cocok, migrasi lengkap, rantai hash audit utuh dan memuat head di MANIFEST, `vault_config` ada. Bandingkan `audit head` dengan head yang dicatat AUDITOR (14.8). Lepas media setelah selesai.
+- **Restore sungguhan** (bencana): server baru → deploy 14.1 langkah 1–3 → `dc up -d postgres` → dekripsi dan restore: `globals.sql.age` dengan `psql`, lalu kedua dump dengan `pg_restore --clean --if-exists -d <db>` → `dc up -d` → SUPER_ADMIN unlock vault. Ganti semua secret setelahnya bila server lama dicurigai bocor (14.6).
+
+### 14.4 Recovery passphrase & identity backup (offline, fisik) · SUPER_ADMIN
+
+- Tulis recovery passphrase **tangan di kertas**, dua salinan, di dua lokasi fisik terpisah (brankas kantor + safe deposit box), dalam amplop tersegel bertanggal dan bertanda tangan. Jangan difoto, diketik, atau disimpan di password manager cloud.
+- Identity age backup (`da-backup-identity.txt`) disimpan di dua USB terenkripsi di lokasi yang sama dengan recovery passphrase. Tanpa identity, backup tidak bisa dibuka. Tanpa recovery passphrase, vault hasil restore tidak bisa dibuka bila passphrase utama hilang.
+- Catat di log fisik siapa yang membuka amplop/USB, kapan, dan untuk apa. Ganti segel setiap kali dibuka.
+- Bila SUPER_ADMIN berganti: lakukan uji 14.5 bersama penggantinya, lalu ganti passphrase utama dari UI.
+
+### 14.5 Uji pemulihan vault (minimal per kuartal) · SUPER_ADMIN
+
+Membuktikan backup + recovery passphrase saja cukup untuk memulihkan **semua** key. Idealnya dilakukan di mesin bersih (laptop offline dengan Docker + repo), bukan server produksi:
+
+1. `restore-check.sh` dengan `KEEP=1` untuk mempertahankan DB scratch (`restore_check_vault_…`).
+2. Jalankan drill pada salinan tersebut (drill menolak DB bernama `da_vault`):
+   ```bash
+   VAULT_DATABASE_URL=postgresql://postgres:…@<host>:5432/restore_check_vault_… \
+     pnpm --filter signer vault:drill --restored-copy
+   ```
+   (Di server: `dc run --rm -e VAULT_DATABASE_URL=… migrate-vault node --import tsx scripts/vault-recovery-drill.ts --restored-copy`.)
+3. Ketik recovery passphrase (tidak tampil di layar). Hasil harus `DRILL PASSED` dengan jumlah key sesuai inventaris. Setiap key didekripsi dan dicocokkan dengan address-nya, lalu satu tx Sepolia dummy ditandatangani (tidak di-broadcast).
+4. Hapus DB scratch: `DROP DATABASE … WITH (FORCE)`. Catat hasil drill di log fisik 14.4.
+
+### 14.6 Rotasi secret
+
+| Secret | Kapan | Cara | Dampak |
+|--------|-------|------|--------|
+| Password DB (`da`, `da_vault`, `da_signer_ro`) | Tahunan / dugaan bocor | `ALTER ROLE … PASSWORD …` via `dc exec postgres psql -U postgres`, ubah URL di env, `dc up -d` | Restart singkat |
+| `REDIS_PASSWORD` | Tahunan | Ubah `redis.env` + `REDIS_URL`, `dc up -d` | Restart singkat |
+| `SIGNER_HMAC_SECRET` | Tahunan / dugaan bocor | Nilai baru di backend & signer bersamaan, `dc up -d backend signer` | Vault terkunci, unlock ulang |
+| `MFA_ENCRYPTION_KEY` | Hanya bila bocor | Mengganti key membuat secret MFA lama tak terbaca: reset MFA semua user (ADMIN dari UI, SUPER_ADMIN via CLI `user:reset-mfa`), lalu enrol ulang | Semua user enrol MFA ulang |
+| `METRICS_TOKEN`, token Telegram | Tahunan / dugaan bocor | Ganti di env + konfigurasi Prometheus/BotFather | — |
+| Passphrase vault | Saat SUPER_ADMIN berganti / dugaan bocor | Ganti passphrase dari UI Key Vault | — |
+| Identity age backup | Dugaan bocor | Buat identity baru, ganti `age-recipients.txt`; backup lama tetap butuh identity lama | Simpan keduanya sampai backup lama kedaluwarsa |
+
+### 14.7 Tx STUCK
+
+1. Tx ditandai STUCK bila belum ada receipt setelah `TX_STUCK_MINUTES`. Sistem **tidak** menandai FAILED karena waktu.
+2. Cek hash di explorer. Bila tx ada di mempool, tunggu; konfirmasi akan dilacak otomatis.
+3. Bila tx hilang dari mempool (dropped), jangan buat tx kedua dengan nonce berbeda. Buat preview baru setelah tx lama dipastikan tidak akan masuk. Bila nonce lama sudah dipakai tx lain, sistem menandai FAILED (*replaced or dropped*).
+4. Speed-up/cancel hanya dilakukan manual dari wallet dengan nonce yang sama, dan dicatat di catatan transaksi.
+
+### 14.8 Jangkar head audit log · AUDITOR (mingguan)
+
+Saat review berkala (12.1), catat `sequence` + `hash` head rantai audit di luar sistem (email ke diri sendiri, catatan fisik, atau tiket). Bila suatu saat rantai tervalidasi tetapi head-nya lebih pendek atau berbeda dari yang dicatat, berarti ada penghapusan atau penulisan ulang: perlakukan sebagai insiden (14.9).
+
+### 14.9 Insiden keamanan
+
+1. **Bekukan:** SUPER_ADMIN lock vault (UI) atau hentikan signer: `dc stop signer` (master key hilang dari memori). Tolak semua approval yang belum ditandatangani.
+2. **Batasi akses:** nonaktifkan user yang dicurigai dan cabut sesinya. Bila server dicurigai disusupi, putus dari jaringan tanpa mematikannya, lalu buat snapshot disk untuk forensik.
+3. **Bukti:** verifikasi rantai audit (Audit Logs → Verifikasi), bandingkan dengan head yang dijangkar (14.8), dan simpan export audit CSV serta `dc logs` dalam rentang waktu kejadian.
+4. **Pulihkan:** rotasi semua secret (14.6). Bila key mungkin bocor (reveal yang tidak dijelaskan, server disusupi saat vault unlocked), pindahkan aset dari address terkait ke destination aman lewat alur normal secepatnya.
+5. Catat kronologi dan keputusan di `docs/07-decisions.md` atau dokumen insiden terpisah.
+
+### 14.10 Mengaktifkan mainnet
+
+Syarat: E2E Sepolia (`docs/08-e2e-sepolia.md`) lulus, uji restore (14.3) dan drill vault (14.5) lulus, monitoring aktif.
+
+1. Di `backend.env`: set `NETWORK_MODE=mainnet` dan tambahkan URL RPC mainnet dalam env var bernama khusus (misalnya `ETHEREUM_RPC_URL=…`), lalu `dc up -d backend`. Badge environment di UI menjadi `production/mainnet`.
+2. ADMIN menambahkan network mainnet di menu **Networks** (misalnya `ethereum`, chain ID 1, nama env var RPC `ETHEREUM_RPC_URL`) beserta price id aset native (`ethereum`). Nilai di network ini tidak berlabel SIMULASI dan dijumlahkan terpisah dari testnet.
+3. **Transfer pertama ke setiap destination** dibatasi oleh sistem. Preview sweep ditolak, dan nilainya maksimal `MAINNET_FIRST_TRANSFER_MAX_VALUE` (default 25 USD) sampai ada satu tx **CONFIRMED** ke destination itu. Bila harga aset belum tersedia, preview ditolak.
+4. Setelah transfer kecil terkonfirmasi, cek saldo di wallet tujuan dengan explorer. Baru setelah itu lakukan sweep.
 
 ## 15. Yang boleh & tidak boleh
 

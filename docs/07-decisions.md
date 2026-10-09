@@ -340,6 +340,24 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-0
 
 ---
 
+## ADR-028 — Deploy produksi, backup, dan transfer pertama mainnet (Fase 14)
+- **Status:** Accepted
+- **Tanggal:** 2026-10-09
+- **Konteks:** Fase 14. Pilihan pemilik projek: 1 VPS + Docker Compose, Caddy, backup lokal + salinan offsite, dan batas transfer pertama mainnet ditegakkan oleh sistem (bukan sekadar prosedur).
+- **Keputusan:**
+  1. **Image:** satu `docker/Dockerfile` multi-stage (node:24-bookworm-slim, pnpm via corepack) dengan target `backend`, `signer`, `web` (Caddy + hasil build frontend). Backend & signer dijalankan dari source TS dengan `node --import tsx` (sesuai keputusan tanpa build step), sebagai user `node`. `.dockerignore` menolak `.env*`, `deploy/env/*.env`, `backups/`, key, dan `node_modules`.
+  2. **Topologi** (`compose.prod.yml`, project `digital-archaeology-prod`): hanya Caddy yang membuka port (80/443). Postgres & Redis (ber-password) di jaringan internal `172.30.0.0/24`. **Signer berbagi network namespace backend** (`network_mode: service:backend`) dan listen di `127.0.0.1:4000` — tidak bisa dijangkau container lain, dan backend tetap memakai http loopback tanpa `SIGNER_ALLOW_INSECURE_HTTP`. Backend & signer: `read_only`, `cap_drop: ALL`, `no-new-privileges`; signer tanpa core dump (`ulimit core=0`) agar master key tidak pernah tertulis ke disk saat crash. Migrasi dijalankan manual (`migrate-app` dengan env backend, `migrate-vault` dengan env signer — tidak ada container yang memegang kedua URL DB). User DB produksi tanpa hak `CREATEDB` (`GRANT_CREATEDB=false`; hanya dev yang butuh shadow DB).
+  3. **Secret** di `deploy/env/<service>.env` di server (mode 600, di-ignore git; template `*.env.example`), satu file per service sehingga signer tidak menerima `DATABASE_URL`/`MFA_ENCRYPTION_KEY`/`REDIS_URL` dan backend tidak menerima URL vault.
+  4. **Fail-fast konfigurasi produksi:** saat `APP_ENV=production`, backend & signer menolak start (`CONFIG_INSECURE`, exit 1) bila ada nilai dev (`dev_only`/`changeme`), Redis tanpa password, origin bukan https, cookie tidak secure, HMAC kosong, `TRUST_PROXY` kosong, opt-out keamanan aktif, atau env service lain bocor ke service ini. Pesan hanya menyebut nama variabel, tidak pernah nilainya.
+  5. **Reverse proxy:** Caddy (HTTPS otomatis) meneruskan `/api/*` ke backend; `/metrics` & `/health*` hanya dari `private_ranges` (selain itu 404); header keamanan (CSP ketat, `frame-ancestors 'none'`, HSTS) untuk SPA; `index.html` `no-store`. Backend memakai `TRUST_PROXY` (hanya IP Caddy, `172.30.0.2`; Caddy menimpa `X-Forwarded-For` dari klien) agar IP klien untuk rate limit & audit benar dan tidak bisa dipalsukan lewat `X-Forwarded-For` dari luar.
+  6. **Backup** (`docker/Dockerfile.backup`, dijalankan cron host): `pg_dump -Fc` DB aplikasi + vault + `pg_dumpall --globals-only`, di-stream langsung ke **age** (tidak ada dump plaintext di disk), `SHA256SUMS` + `MANIFEST` (versi, nama DB, **head audit log** yang dibaca sebelum dump), rename atomik, rotasi lokal `RETENTION_DAYS` (backup terbaru tidak pernah dihapus). Offsite opsional lewat rclone (`--immutable` + `rclone check`); server **tidak pernah menghapus** di offsite — retensi diatur lifecycle/object lock bucket, sehingga penyerang yang menguasai server tidak bisa menghapus salinan offsite. Identity age (private) disimpan offline, tidak di server.
+  7. **Uji restore** (`restore-check.sh`): verifikasi checksum, dekripsi dengan identity yang di-mount sesaat, restore ke DB scratch bernama acak, lalu cek: role ada di globals, migrasi lengkap, **rantai hash audit utuh** (query yang sama dengan `verifyChain`) dan memuat head dari MANIFEST, `vault_config` ada. DB scratch dihapus kecuali `KEEP=1` (hanya yang dibuat run itu).
+  8. **Uji pemulihan vault** (`pnpm --filter signer vault:drill --restored-copy`): pada salinan hasil restore (menolak DB bernama `da_vault`), recovery passphrase dibaca tanpa echo, vault di-recover (passphrase utama salinan diganti nilai acak yang dibuang), setiap key didekripsi dan dicocokkan ke address-nya (tanpa membuat string hex key), satu tx Sepolia dummy ditandatangani dan diverifikasi (tidak pernah di-broadcast), lalu dikunci.
+  9. **Transfer pertama mainnet:** di jaringan non-testnet, preview ke sebuah destination yang **belum pernah menerima tx CONFIRMED** ditolak bila berupa sweep, bila harga aset tidak tersedia, atau bila nilainya > `MAINNET_FIRST_TRANSFER_MAX_VALUE` (default 25, mata uang `FIAT_CURRENCY`, dihitung dengan `fiatValue` decimal). Setelah satu tx terkonfirmasi ke destination itu, batas tidak berlaku lagi. Testnet tidak terpengaruh.
+- **Batasan:** satu VPS = satu titik kegagalan (RTO bergantung pada restore dari backup). Postgres & signer di host yang sama; isolasi bergantung pada container + DB terpisah, bukan mesin terpisah. Aktivasi mainnet & tag `v1.0.0` dilakukan pemilik projek setelah E2E Sepolia (docs/08) dan drill restore lulus.
+
+---
+
 ## Jawaban pertanyaan terbuka (02-analysis bagian 5)
 
 | # | Pertanyaan | Jawaban | Tanggal |
@@ -348,7 +366,7 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-0
 | Q2 | Sendiri / klien + format mandat | Sendiri / tim internal; `owner_reference` umumnya `SELF`/nama tim, dan dokumen mandat klien tidak diprioritaskan di MVP | 2026-10-01 |
 | Q3 | Provider RPC & explorer | RPC: bebas (Alchemy/Infura), dirujuk lewat nama env var; explorer: Etherscan API v2 | 2026-10-02 |
 | Q4 | Provider harga & mata uang | CoinGecko, USD; testnet = simulasi harga mainnet | 2026-10-03 |
-| Q5 | Target deploy | *(putuskan sebelum Fase 14)* | |
+| Q5 | Target deploy | 1 VPS + Docker Compose, Caddy (HTTPS otomatis), backup lokal + salinan offsite terenkripsi (ADR-028) | 2026-10-09 |
 | Q6 | Jumlah operator | Lebih dari 3; maker-checker bisa ditegakkan penuh, tiap role dipegang orang berbeda | 2026-10-01 |
 
 ---

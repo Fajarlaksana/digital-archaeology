@@ -1,0 +1,45 @@
+# Reverse proxy & static frontend (Phase 14, ADR-028). Automatic HTTPS via Let's Encrypt.
+#   DA_DOMAIN   e.g. archaeology.example.com
+#   ACME_EMAIL  contact for certificate expiry notices
+{
+	email {$ACME_EMAIL}
+}
+
+{$DA_DOMAIN} {
+	encode zstd gzip
+
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	header -Server
+
+	# Health checks and metrics: internal networks only (Prometheus, uptime checks on the host).
+	@ops path /metrics /health /health/*
+	handle @ops {
+		@internal remote_ip private_ranges
+		handle @internal {
+			reverse_proxy backend:3000
+		}
+		respond 404
+	}
+
+	# The API sets its own strict headers (helmet); Caddy only forwards the client IP.
+	handle /api/* {
+		reverse_proxy backend:3000
+	}
+
+	# Single-page app.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+		header {
+			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+			X-Content-Type-Options nosniff
+			X-Frame-Options DENY
+			Referrer-Policy no-referrer
+			Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+			Cross-Origin-Opener-Policy same-origin
+		}
+		@html path / /index.html
+		header @html Cache-Control "no-store"
+	}
+}

@@ -1,0 +1,3 @@
+# Public key(s) the backups are encrypted to (age-keygen -y identity.txt). One per line.
+# The matching identity (private) file is kept OFFLINE — never on the server.
+age1examplexxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx

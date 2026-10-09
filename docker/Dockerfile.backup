@@ -1,0 +1,7 @@
+# Backup / restore-check tooling (Phase 14, ADR-028): pg_dump 16 + age + rclone.
+# Run on demand (host cron): `docker compose -f compose.prod.yml run --rm backup`.
+FROM alpine:3.20
+RUN apk add --no-cache bash postgresql16-client age rclone coreutils findutils tzdata
+COPY deploy/backup/backup.sh deploy/backup/restore-check.sh /usr/local/bin/
+RUN chmod 0755 /usr/local/bin/backup.sh /usr/local/bin/restore-check.sh
+ENTRYPOINT ["/usr/local/bin/backup.sh"]

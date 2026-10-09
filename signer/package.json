@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "test": "vitest run",
+    "vault:drill": "tsx scripts/vault-recovery-drill.ts",
     "typecheck": "tsc -p tsconfig.json",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",

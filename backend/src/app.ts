@@ -42,6 +42,7 @@ export type AppEnv = Pick<
   | 'SESSION_TTL_HOURS'
   | 'COOKIE_SECURE'
   | 'METRICS_TOKEN'
+  | 'TRUST_PROXY'
 >
 
 /** Every registered route and its protection (verified by the route inventory test, Phase 13). */
@@ -75,6 +76,10 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     loggerInstance,
     // Always generate our own id; never trust a client-supplied one.
     requestIdHeader: false,
+    // Only the configured reverse proxy may set the client IP (rate limits, audit log).
+    trustProxy: deps.env.TRUST_PROXY
+      ? deps.env.TRUST_PROXY.split(',').map((entry) => entry.trim())
+      : false,
     genReqId: () => randomUUID(),
   })
 

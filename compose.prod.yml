@@ -1,0 +1,136 @@
+# Production on one VPS (Phase 14, ADR-028).
+#   docker compose -f compose.prod.yml build
+#   docker compose -f compose.prod.yml run --rm migrate-app && docker compose -f compose.prod.yml run --rm migrate-vault
+#   docker compose -f compose.prod.yml up -d
+# Secrets live in deploy/env/*.env on the server (never in git; templates: deploy/env/*.env.example).
+# Only Caddy publishes ports. The signer shares the backend's network namespace and listens on
+# 127.0.0.1 — it is reachable from the backend container only.
+name: digital-archaeology-prod
+
+x-hardening: &hardening
+  restart: unless-stopped
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: ['no-new-privileges:true']
+  cap_drop: [ALL]
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: deploy/env/postgres.env
+    environment:
+      POSTGRES_USER: postgres
+      APP_DB_NAME: digital_archaeology
+      APP_DB_USER: da
+      VAULT_DB_NAME: da_vault
+      VAULT_DB_USER: da_vault
+      SIGNER_RO_DB_USER: da_signer_ro
+      GRANT_CREATEDB: 'false'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    networks: [internal]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    env_file: deploy/env/redis.env
+    command: ['sh', '-c', 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
+    volumes: [redis-data:/data]
+    networks: [internal]
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping | grep PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # One-off migrations before every `up` (each with its own env: no container holds both DB URLs).
+  migrate-app:
+    image: digital-archaeology/backend:${DA_VERSION:-latest}
+    profiles: [tools]
+    env_file: deploy/env/backend.env
+    command: ['node_modules/.bin/prisma', 'migrate', 'deploy']
+    depends_on: { postgres: { condition: service_healthy } }
+    networks: [internal]
+
+  migrate-vault:
+    image: digital-archaeology/signer:${DA_VERSION:-latest}
+    profiles: [tools]
+    env_file: deploy/env/signer.env
+    command: ['node_modules/.bin/prisma', 'migrate', 'deploy']
+    depends_on: { postgres: { condition: service_healthy } }
+    networks: [internal]
+
+  backend:
+    <<: *hardening
+    image: digital-archaeology/backend:${DA_VERSION:-latest}
+    build: { context: ., dockerfile: docker/Dockerfile, target: backend }
+    env_file: deploy/env/backend.env
+    environment:
+      APP_ENV: production
+      BACKEND_HOST: 0.0.0.0
+      BACKEND_PORT: '3000'
+      SIGNER_URL: http://127.0.0.1:4000
+      # Only Caddy may set X-Forwarded-For (it overwrites any value sent by the client).
+      TRUST_PROXY: 172.30.0.2
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    networks:
+      internal: { ipv4_address: 172.30.0.10 }
+
+  signer:
+    <<: *hardening
+    image: digital-archaeology/signer:${DA_VERSION:-latest}
+    build: { context: ., dockerfile: docker/Dockerfile, target: signer }
+    env_file: deploy/env/signer.env
+    environment:
+      APP_ENV: production
+      SIGNER_HOST: 127.0.0.1
+      SIGNER_PORT: '4000'
+    network_mode: service:backend
+    # No core dumps: a crash must never write the unlocked master key to disk.
+    ulimits: { core: 0 }
+    depends_on:
+      backend: { condition: service_started, restart: true }
+
+  web:
+    image: digital-archaeology/web:${DA_VERSION:-latest}
+    build: { context: ., dockerfile: docker/Dockerfile, target: web }
+    restart: unless-stopped
+    env_file: deploy/env/web.env
+    ports: ['80:80', '443:443', '443:443/udp']
+    volumes: [caddy-data:/data, caddy-config:/config]
+    depends_on: [backend]
+    networks:
+      internal: { ipv4_address: 172.30.0.2 }
+
+  # Encrypted backups (age) of both databases + optional offsite copy (rclone). Host cron runs it.
+  backup:
+    image: digital-archaeology/backup:${DA_VERSION:-latest}
+    build: { context: ., dockerfile: docker/Dockerfile.backup }
+    profiles: [tools]
+    env_file: deploy/env/backup.env
+    volumes:
+      - ./backups:/backups
+      - ./deploy/backup/age-recipients.txt:/config/age-recipients.txt:ro
+      - ./deploy/rclone:/config/rclone:ro
+    networks: [internal]
+
+networks:
+  internal:
+    ipam:
+      # Static addresses (web .2, backend .10) stay below .128; dynamic ones come from ip_range.
+      config: [{ subnet: 172.30.0.0/24, ip_range: 172.30.0.128/25, gateway: 172.30.0.1 }]
+
+volumes:
+  postgres-data:
+  redis-data:
+  caddy-data:
+  caddy-config:

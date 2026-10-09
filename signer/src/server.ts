@@ -1,6 +1,6 @@
 import { createLogger } from '@da/shared'
 import { buildSignerApp } from './app'
-import { loadEnvFile, parseEnv, type SignerEnv } from './config/env'
+import { loadEnvFile, parseEnv, productionProblems, type SignerEnv } from './config/env'
 import { DEFAULT_KDF } from './crypto/kdf'
 import { createKeyService } from './keys/key.service'
 import { createPgApprovedTransactionSource } from './transactions/approved-source'
@@ -19,6 +19,11 @@ try {
 }
 
 const logger = createLogger({ name: 'signer', level: env.LOG_LEVEL })
+const insecure = productionProblems(env, process.env)
+if (insecure.length > 0) {
+  logger.fatal({ problems: insecure }, 'CONFIG_INSECURE')
+  process.exit(1)
+}
 const db = createVaultDatabase(env.VAULT_DATABASE_URL)
 const repo = createVaultRepository(db)
 const vault = createVaultService({

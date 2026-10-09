@@ -1,7 +1,7 @@
 import { Redis } from 'ioredis'
 import { createLogger } from '@da/shared'
 import { buildApp } from './app'
-import { isLoopbackHost, loadEnvFile, parseEnv, type Env } from './config/env'
+import { isLoopbackHost, loadEnvFile, parseEnv, productionProblems, type Env } from './config/env'
 import { checkDatabase, createPrismaClient } from './lib/prisma'
 import { createTelegramNotifier } from './lib/notifier'
 import { redisRateLimiterFactory } from './lib/rate-limiter'
@@ -23,6 +23,11 @@ try {
 }
 
 const logger = createLogger({ name: 'backend', level: env.LOG_LEVEL })
+const insecure = productionProblems(env, process.env)
+if (insecure.length > 0) {
+  logger.fatal({ problems: insecure }, 'CONFIG_INSECURE')
+  process.exit(1)
+}
 const db = createPrismaClient(env.DATABASE_URL)
 // Login/MFA throttling shared by every API instance. No offline queue: a Redis outage makes the
 // limiter fall back to memory immediately instead of hanging logins.
@@ -67,6 +72,7 @@ const services = createServices(db, {
   balanceMaxAgeMs: env.ELIGIBILITY_BALANCE_MAX_AGE_HOURS * 3_600_000,
   approvalTtlMs: env.APPROVAL_TTL_MINUTES * 60_000,
   txConfirmations: env.TX_CONFIRMATIONS,
+  mainnetFirstTransferMax: env.MAINNET_FIRST_TRANSFER_MAX_VALUE,
   txStuckMs: env.TX_STUCK_MINUTES * 60_000,
 })
 const scanQueue = createScanQueue({
