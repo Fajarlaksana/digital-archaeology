@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vitest'
 import type { Role } from '../../../src/generated/prisma/client'
 import { createPrismaClient, type Database } from '../../../src/lib/prisma'
@@ -183,5 +184,69 @@ describe.skipIf(!testDatabaseUrl)('user management & RBAC', () => {
         after: { roles: ['REVIEWER'] },
       })
     })
+  })
+
+  describe('MFA reset (lost authenticator, Phase 13b)', () => {
+    const reset = (
+      id: string,
+      token: string,
+      body: object = { reason: 'Identity verified by video call + ID card' },
+    ) => h.call('POST', `/api/users/${id}/mfa/reset`, token, body)
+
+    it('ADMIN resets another user: sessions end, MFA set-up is required again, audited', async () => {
+      h = await createHarness(db)
+      const { user: admin, token } = await sessionFor(['ADMIN'])
+      const { user: target, token: targetToken } = await sessionFor(['REVIEWER'])
+
+      const res = await reset(target.id, token)
+      expect(res.statusCode).toBe(200)
+      expect(res.json().user).toMatchObject({ id: target.id, mfaEnabled: false })
+      const stored = await db.user.findUniqueOrThrow({ where: { id: target.id } })
+      expect(stored).toMatchObject({
+        mfaEnabled: false,
+        mfaSecretEncrypted: null,
+        mfaLastUsedStep: null,
+      })
+      expect((await h.call('GET', '/api/auth/me', targetToken)).statusCode).toBe(401)
+
+      const relogin = await h.login(target.email)
+      expect(relogin.res.json()).toMatchObject({ sessionState: 'MFA_SETUP_REQUIRED' })
+
+      const audit = await db.auditLog.findFirst({
+        where: { userId: admin.id, action: 'MFA_RESET' },
+      })
+      expect(audit).toMatchObject({ resourceId: target.id })
+      expect(audit?.metadata).toMatchObject({ reason: 'Identity verified by video call + ID card' })
+    })
+
+    it('needs a reason, a recent re-auth, and refuses self, SUPER_ADMIN and users without MFA', async () => {
+      h = await createHarness(db)
+      const { user: admin, token } = await sessionFor(['ADMIN'])
+      const { user: target } = await sessionFor(['REVIEWER'])
+      expect((await reset(target.id, token, { reason: 'short' })).statusCode).toBe(400)
+      expect((await reset(admin.id, token)).statusCode).toBe(403)
+      const { user: superAdmin } = await sessionFor(['SUPER_ADMIN'])
+      const sa = await reset(superAdmin.id, token)
+      expect(sa.statusCode).toBe(403)
+      expect(sa.json().error.message).toMatch(/server CLI/)
+      const { user: analyst } = await sessionFor(['ANALYST'])
+      expect((await reset(analyst.id, token)).statusCode).toBe(409)
+      expect((await reset(randomUUID(), token)).statusCode).toBe(404)
+
+      h.advance(6 * 60_000)
+      const stale = await reset(target.id, token)
+      expect(stale.json().error.code).toBe('REAUTH_REQUIRED')
+      expect((await db.user.findUniqueOrThrow({ where: { id: target.id } })).mfaEnabled).toBe(true)
+    })
+
+    it.each(['SUPER_ADMIN', 'ANALYST', 'REVIEWER', 'AUDITOR'] as const)(
+      '%s cannot reset MFA (403)',
+      async (role) => {
+        h = await createHarness(db)
+        const { user: target } = await sessionFor(['REVIEWER'])
+        const { token } = await sessionFor([role])
+        expect((await reset(target.id, token)).statusCode).toBe(403)
+      },
+    )
   })
 })

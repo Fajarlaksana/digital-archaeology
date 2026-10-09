@@ -131,6 +131,68 @@ describe('Audit Logs', () => {
     )
   })
 
+  it('records a periodic review up to the latest entry, and filters sensitive actions', async () => {
+    let reviewed: unknown
+    const fetchMock = auditBackend({
+      'GET /api/audit-logs/reviews/status': () =>
+        json(200, {
+          lastReview: reviewed
+            ? {
+                at: '2026-10-09T02:00:00.000Z',
+                by: { id: 'a1', email: 'auditor@dev.local', name: 'Audi' },
+                upToSequence: '12',
+                note: 'ok',
+              }
+            : null,
+          sensitiveSince: reviewed ? 0 : 7,
+          latestSequence: '12',
+        }),
+      'POST /api/audit-logs/reviews': (b) => {
+        reviewed = b
+        return json(200, {
+          chain: {
+            ok: true,
+            checked: 12,
+            firstBrokenSequence: null,
+            reason: null,
+            headSequence: '12',
+            headHash: 'c'.repeat(64),
+          },
+          reviewedSensitive: 7,
+        })
+      },
+      'GET /api/audit-logs*': () => json(200, { items: [], nextBefore: null }),
+    })
+    renderAt('/audit-logs')
+    const panel = await screen.findByRole('region', { name: 'Review berkala' })
+    expect(panel.textContent).toMatch(/Belum pernah ada review\. 7 aksi sensitif/)
+    const form = within(panel).getByRole('form', { name: 'Tandai sudah direview' })
+    const submit = within(form).getByRole('button', {
+      name: 'Tandai sudah direview sampai #12',
+    }) as HTMLButtonElement
+    expect(submit.disabled).toBe(true)
+    fireEvent.change(within(form).getByLabelText(/^Catatan review/), {
+      target: { value: 'Semua signing cocok dengan approval' },
+    })
+    fireEvent.click(submit)
+    expect((await within(panel).findByRole('status')).textContent).toMatch(
+      /7 aksi sensitif\). Rantai utuh/,
+    )
+    expect(reviewed).toEqual({ upToSequence: '12', note: 'Semua signing cocok dengan approval' })
+    await waitFor(() =>
+      expect(panel.textContent).toMatch(/Terakhir direview sampai #12 oleh auditor@dev\.local/),
+    )
+
+    const filter = screen.getByRole('form', { name: 'Filter audit' })
+    fireEvent.click(within(filter).getByLabelText(/Aksi sensitif saja/))
+    fireEvent.click(within(filter).getByRole('button', { name: 'Terapkan filter' }))
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([url]) => String(url) === '/api/audit-logs?category=sensitive'),
+      ).toBe(true),
+    )
+  })
+
   it('is not reachable without audit:read', async () => {
     mockBackend({ 'GET /api/auth/me': () => json(200, session('ANALYST', ['addresses:read'])) })
     renderAt('/audit-logs')

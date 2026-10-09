@@ -138,6 +138,48 @@ export function createUserService({ users, sessions, audit, now }: UserServiceDe
       })
       return toPublicUser(updated)
     },
+
+    /**
+     * Lost authenticator (Phase 13b, ADR-027). The ADMIN states how the person's identity was
+     * verified out of band; every session of the user ends and MFA must be set up again at the
+     * next login. Never for one's own account, never for SUPER_ADMIN (server CLI only).
+     */
+    async resetMfa(
+      actor: AuthContext,
+      id: string,
+      input: { reason: string },
+      meta: RequestMeta,
+    ): Promise<PublicUser> {
+      const target = await users.findById(id)
+      if (!target) throw new AppError('NOT_FOUND', 'User not found', { resourceId: id })
+      if (target.id === actor.user.id) {
+        throw new AppError('FORBIDDEN', 'You cannot reset your own MFA — ask another ADMIN')
+      }
+      if (roleList(target).some((role) => CLI_ONLY_ROLES.has(role))) {
+        throw new AppError(
+          'FORBIDDEN',
+          'MFA of a SUPER_ADMIN can only be reset from the server CLI',
+          { resourceId: id },
+        )
+      }
+      if (!target.mfaEnabled && !target.mfaSecretEncrypted) {
+        throw new AppError('CONFLICT', 'This user has no MFA to reset', { resourceId: id })
+      }
+      await users.resetMfa(id)
+      const revokedSessions = await sessions.revokeAllForUser(id, now())
+      await audit.create({
+        action: 'MFA_RESET',
+        result: 'SUCCESS',
+        userId: actor.user.id,
+        resourceType: 'user',
+        resourceId: id,
+        ipAddress: meta.ip,
+        userAgent: meta.userAgent,
+        requestId: meta.requestId,
+        metadata: { email: target.email, reason: input.reason, revokedSessions },
+      })
+      return toPublicUser((await users.findById(id))!)
+    },
   }
 }
 

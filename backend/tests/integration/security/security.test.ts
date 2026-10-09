@@ -30,6 +30,7 @@ const NEEDS_RECENT_AUTH = [
   'POST /api/transactions/:id/reject',
   'POST /api/transactions/:id/sign',
   'POST /api/transactions/:id/broadcast',
+  'POST /api/users/:id/mfa/reset',
 ]
 
 const key = (r: { method: string; url: string }) => `${r.method} ${r.url}`

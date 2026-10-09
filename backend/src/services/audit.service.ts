@@ -1,4 +1,4 @@
-import type { Logger } from '@da/shared'
+import { AppError, type Logger } from '@da/shared'
 import type { AuditResult } from '../generated/prisma/client'
 import { toCsv } from '../lib/csv'
 import type {
@@ -10,7 +10,42 @@ import type {
 import { recordAction } from './audit-trail'
 import type { AuthContext, RequestMeta } from './auth.service'
 
+/**
+ * Actions an AUDITOR reviews periodically (Phase 13b, ADR-027): key custody, money movement,
+ * access changes and refusals. The review procedure is in docs/06-manual-guide.md §12.
+ */
+export const SENSITIVE_ACTIONS = [
+  'VAULT_INITIALIZED',
+  'VAULT_UNLOCKED',
+  'VAULT_UNLOCKED_FAILED',
+  'VAULT_PASSPHRASE_CHANGED',
+  'VAULT_RECOVERED',
+  'KEY_IMPORTED',
+  'KEY_REVEALED',
+  'KEY_REVEALED_FAILED',
+  'DESTINATION_APPROVED',
+  'DESTINATION_DISABLED',
+  'TRANSACTION_APPROVED',
+  'TX_SIGNED',
+  'TX_SIGNATURE_REJECTED',
+  'TX_BROADCASTED',
+  'TX_BROADCAST_FAILED',
+  'TX_FAILED',
+  'TX_STUCK',
+  'USER_CREATED',
+  'USER_UPDATED',
+  'MFA_RESET',
+  'MFA_RESET_CLI',
+  'USER_CREATED_CLI',
+  'ACCOUNT_LOCKED',
+  'ACCESS_DENIED',
+  'SESSION_REVOKED_MFA_ATTEMPTS',
+  'AUDIT_CHAIN_VERIFIED',
+]
+
 export interface AuditFilter {
+  /** "sensitive" = SENSITIVE_ACTIONS only. */
+  category?: 'sensitive'
   action?: string
   userId?: string
   result?: AuditResult
@@ -77,7 +112,10 @@ function toPublic(e: AuditLogWithUser): PublicAuditEntry {
 /** Read-only access to the audit trail for AUDITOR (Phase 12, ADR-025). */
 export function createAuditService(deps: { audit: AuditLogRepository; logger: Logger }) {
   const { audit } = deps
-  const query = (filter: AuditFilter): AuditQuery => ({ ...filter })
+  const query = ({ category, ...filter }: AuditFilter): AuditQuery => ({
+    ...filter,
+    actions: category === 'sensitive' ? SENSITIVE_ACTIONS : undefined,
+  })
 
   return {
     /** Newest first; `before` is the sequence of the last row of the previous page. */
@@ -96,6 +134,72 @@ export function createAuditService(deps: { audit: AuditLogRepository; logger: Lo
     },
 
     actions: () => audit.distinctActions(),
+
+    /** The last periodic review and how much sensitive activity happened since. */
+    async reviewStatus() {
+      const last = await audit.lastByAction('AUDIT_REVIEWED')
+      const upTo = last
+        ? BigInt(String((last.metadata as { upToSequence?: string })?.upToSequence ?? '0'))
+        : null
+      return {
+        lastReview: last
+          ? {
+              at: last.createdAt.toISOString(),
+              by: last.user,
+              upToSequence: upTo!.toString(),
+              note: (last.metadata as { note?: string })?.note ?? null,
+            }
+          : null,
+        sensitiveSince: await audit.count({
+          actions: SENSITIVE_ACTIONS,
+          afterSequence: upTo ?? undefined,
+        }),
+        latestSequence: (await audit.latestSequence())?.toString() ?? null,
+      }
+    },
+
+    /**
+     * Records that the AUDITOR reviewed everything up to `upToSequence`; the integrity check
+     * runs at the same moment and its result is part of the record.
+     */
+    async markReviewed(
+      actor: AuthContext,
+      input: { upToSequence: string; note: string },
+      meta: RequestMeta,
+    ) {
+      const upTo = BigInt(input.upToSequence)
+      const latest = await audit.latestSequence()
+      if (latest === null || upTo > latest) {
+        throw new AppError('VALIDATION_ERROR', 'upToSequence is beyond the latest audit entry')
+      }
+      const previous = await audit.lastByAction('AUDIT_REVIEWED')
+      const previousUpTo = previous
+        ? BigInt(String((previous.metadata as { upToSequence?: string })?.upToSequence ?? '0'))
+        : null
+      if (previousUpTo !== null && upTo <= previousUpTo) {
+        throw new AppError('CONFLICT', `Already reviewed up to #${previousUpTo}`)
+      }
+      const chain = await audit.verifyChain()
+      const reviewedSensitive = await audit.count({
+        actions: SENSITIVE_ACTIONS,
+        afterSequence: previousUpTo ?? undefined,
+      })
+      await recordAction(audit, actor, meta, {
+        action: 'AUDIT_REVIEWED',
+        resourceType: 'audit',
+        resourceId: input.upToSequence,
+        metadata: {
+          upToSequence: input.upToSequence,
+          fromSequence: previousUpTo?.toString() ?? null,
+          note: input.note,
+          reviewedSensitive,
+          chainOk: chain.ok,
+          headSequence: chain.headSequence,
+          headHash: chain.headHash,
+        },
+      })
+      return { chain, reviewedSensitive }
+    },
 
     async verify(actor: AuthContext, meta: RequestMeta): Promise<ChainCheck> {
       const check = await audit.verifyChain()

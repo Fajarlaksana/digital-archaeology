@@ -56,6 +56,14 @@ Password diketik tanpa ditampilkan dan diminta dua kali. Pembuatan akun ini terc
 4. Anda tidak bisa mengubah role atau status akun Anda sendiri, dan tidak bisa mengubah akun SUPER_ADMIN.
 5. Semua perubahan tercatat di audit log beserta data sebelum dan sesudahnya.
 
+### 3A.1 Reset MFA (perangkat authenticator hilang) · *Fase 13* ✅
+1. **Pastikan identitas orangnya di luar sistem** dulu (mis. video call sambil mencocokkan KTP, atau tatap muka). Jangan pernah mereset hanya berdasarkan chat/email.
+2. Di **Users**, klik **Reset MFA** pada baris user tersebut, lalu isi **Verifikasi identitas** (bagaimana identitasnya dipastikan, minimal 10 karakter). Sistem meminta konfirmasi password + kode authenticator Anda bila perlu.
+3. Semua sesi user itu langsung berakhir. Saat login berikutnya ia harus memasang authenticator baru (QR).
+4. Anda tidak bisa mereset MFA akun sendiri (minta ADMIN lain). MFA **SUPER_ADMIN** hanya bisa direset oleh pengelola server lewat CLI:
+   `pnpm --filter backend user:reset-mfa --email <email> --reason "<cara verifikasi identitas>"`
+5. Setiap reset tercatat (`MFA_RESET` / `MFA_RESET_CLI`) dan memicu notifikasi Telegram.
+
 ## 4. Networks & aset · *Fase 4* ✅ · ADMIN (lihat: semua role)
 
 1. Menu **Networks** menampilkan setiap network beserta aset yang dipantau, status testnet/mainnet, dan apakah RPC sudah dikonfigurasi di server.
@@ -359,7 +367,20 @@ Menu **Recovery** menampilkan status tiap address (pilih network dan status), le
    - **Rantai RUSAK mulai baris #N**: isi baris diubah atau ada baris yang dihapus/disisipkan langsung di database. Segera laporkan dan amankan server.
 5. Log tidak bisa diedit atau dihapus lewat aplikasi maupun user database aplikasi.
 
-AUDITOR sebaiknya rutin memeriksa aksi SUPER_ADMIN: `VAULT_UNLOCKED`, `KEY_IMPORTED`, `KEY_REVEALED`, `TX_SIGNED`, `TX_BROADCASTED`, serta penolakan (`DENIED`) dan `TX_SIGNATURE_REJECTED`.
+### 12.1 Prosedur review berkala (minimal mingguan) · AUDITOR · *Fase 13* ✅
+Bagian **Review berkala** di atas daftar menampilkan kapan review terakhir dilakukan dan berapa **aksi sensitif** terjadi sejak itu.
+
+1. Centang **Aksi sensitif saja** lalu **Terapkan filter**. Yang termasuk: vault (dibuka, gagal, dipulihkan, ganti passphrase), import/reveal key, approval destination & transaksi, signing, broadcast, transaksi gagal/STUCK, perubahan user & role, reset MFA, akun terkunci, akses ditolak, dan verifikasi rantai.
+2. Untuk setiap entri sejak review terakhir, cocokkan dengan kenyataan:
+   - setiap `TX_SIGNED` / `TX_BROADCASTED` punya `TRANSACTION_APPROVED` oleh REVIEWER yang berbeda, dan memang direncanakan;
+   - setiap `VAULT_UNLOCKED` ada alasannya (jadwal signing/import); **setiap `KEY_REVEALED` harus bisa dijelaskan oleh SUPER_ADMIN**;
+   - `USER_UPDATED` / `MFA_RESET` sesuai permintaan resmi;
+   - `ACCESS_DENIED`, `*_FAILED`, `ACCOUNT_LOCKED` berulang → indikasi percobaan penyalahgunaan.
+3. Klik **Verifikasi integritas**. Catat **head** (nomor + hash) di luar sistem.
+4. Isi **Catatan review** (ringkasan temuan, atau "tidak ada temuan") lalu klik **Tandai sudah direview sampai #N**. Sistem memverifikasi rantai sekali lagi dan menyimpan hasilnya bersama catatan (`AUDIT_REVIEWED`).
+5. **Temuan mencurigakan** (reveal tanpa penjelasan, signing tanpa approval yang wajar, rantai rusak): eskalasikan ke pemilik projek, minta SUPER_ADMIN mengunci vault, dan jangan tandai review sebagai bersih.
+
+Notifikasi Telegram (bila dikonfigurasi) mengirim peringatan langsung untuk aksi paling sensitif, sehingga review berkala tidak menjadi satu-satunya pengaman.
 
 ## 13. Troubleshooting
 

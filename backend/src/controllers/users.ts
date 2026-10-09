@@ -21,6 +21,11 @@ const updateBody = z
   .refine((body) => Object.keys(body).length > 0, 'Nothing to update')
 
 const idParams = z.object({ id: z.uuid() })
+/** How the person's identity was verified out of band (e.g. video call + ID card). */
+const resetMfaBody = z.object({ reason: z.string().trim().min(10).max(500) })
+
+/** Resetting someone's MFA is account recovery: re-confirm identity first (ADR-027). */
+export const MFA_RESET_REAUTH_WINDOW_MS = 5 * 60_000
 
 export function registerUserRoutes(
   app: FastifyInstance,
@@ -39,6 +44,28 @@ export function registerUserRoutes(
       const body = createBody.parse(request.body)
       const user = await users.create(request.auth as AuthContext, body, requestMeta(request))
       return reply.status(201).send({ user })
+    },
+  )
+
+  app.post(
+    '/api/users/:id/mfa/reset',
+    {
+      config: { skipGenericAudit: true },
+      preHandler: [
+        guards.permission('users:manage'),
+        guards.recentAuth(MFA_RESET_REAUTH_WINDOW_MS),
+      ],
+    },
+    async (request) => {
+      const { id } = idParams.parse(request.params)
+      return {
+        user: await users.resetMfa(
+          request.auth as AuthContext,
+          id,
+          resetMfaBody.parse(request.body),
+          requestMeta(request),
+        ),
+      }
     },
   )
 

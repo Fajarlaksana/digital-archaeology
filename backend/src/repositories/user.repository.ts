@@ -98,6 +98,14 @@ export function createUserRepository(db: Database) {
       })
     },
 
+    /** Forgets the authenticator: the user must set up MFA again at the next login. */
+    async resetMfa(id: string): Promise<void> {
+      await db.user.update({
+        where: { id },
+        data: { mfaSecretEncrypted: null, mfaEnabled: false, mfaLastUsedStep: null },
+      })
+    },
+
     /**
      * Atomically records a TOTP time step as used. Returns false when that step (or a later one)
      * was already used — i.e. the code is a replay, even under concurrent requests.

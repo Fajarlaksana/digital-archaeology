@@ -12,6 +12,7 @@ import { createServices } from '../../../src/services'
 import { createFakeChain, type FakeChain } from '../fake-chain'
 import { createFakePrices, type FakePrices } from '../fake-prices'
 import { createFakeSigner, type FakeSigner } from '../fake-signer'
+import type { Notifier } from '../../../src/lib/notifier'
 
 export const TEST_MFA_KEY = Buffer.alloc(32, 3).toString('base64')
 export const PASSWORD = 'correct horse battery staple'
@@ -25,6 +26,10 @@ export async function createHarness(
     chain?: FakeChain
     prices?: FakePrices
     signer?: FakeSigner
+    /** Captures security alerts (Phase 13b). */
+    notifier?: Notifier
+    /** Enables GET /metrics with this bearer token. */
+    metricsToken?: string
   } = {},
 ) {
   let current = new Date('2026-10-02T08:00:00Z')
@@ -65,6 +70,8 @@ export async function createHarness(
     priceProvider: prices.provider,
     fiatCurrency: 'USD',
     signer: signer.client,
+    notifier: options.notifier,
+    environmentLabel: 'test/testnet',
     now,
   })
   const app: FastifyInstance = await buildApp({
@@ -74,6 +81,7 @@ export async function createHarness(
       APP_ORIGIN,
       SESSION_TTL_HOURS: 12,
       COOKIE_SECURE: undefined,
+      METRICS_TOKEN: options.metricsToken,
     },
     logger,
     checkDatabase: async () => 1,

@@ -21,6 +21,10 @@ export interface AuditQuery {
   resourceType?: string
   resourceId?: string
   result?: AuditResult
+  /** Any of these actions (e.g. the "sensitive" category). Combined with `action` if both set. */
+  actions?: string[]
+  /** Only entries after this sequence (e.g. since the last review). */
+  afterSequence?: bigint
   /** Inclusive lower / exclusive upper bound on created_at. */
   from?: Date
   to?: Date
@@ -58,16 +62,46 @@ export function createAuditLogRepository(db: Database) {
       return db.auditLog.findMany({
         where: {
           userId: query.userId,
-          action: query.action,
+          action: query.actions
+            ? { in: query.actions, ...(query.action ? { equals: query.action } : {}) }
+            : query.action,
           resourceType: query.resourceType,
           resourceId: query.resourceId,
           result: query.result,
           createdAt: query.from || query.to ? { gte: query.from, lt: query.to } : undefined,
-          sequence: query.beforeSequence === undefined ? undefined : { lt: query.beforeSequence },
+          sequence:
+            query.beforeSequence === undefined && query.afterSequence === undefined
+              ? undefined
+              : { lt: query.beforeSequence, gt: query.afterSequence },
         },
         include: { user: { select: { id: true, email: true, name: true } } },
         orderBy: { sequence: 'desc' },
         take: Math.min(query.limit ?? 50, 50_000),
+      })
+    },
+
+    count(query: Pick<AuditQuery, 'actions' | 'afterSequence'>): Promise<number> {
+      return db.auditLog.count({
+        where: {
+          action: query.actions ? { in: query.actions } : undefined,
+          sequence: query.afterSequence === undefined ? undefined : { gt: query.afterSequence },
+        },
+      })
+    },
+
+    async latestSequence(): Promise<bigint | null> {
+      const row = await db.auditLog.findFirst({
+        orderBy: { sequence: 'desc' },
+        select: { sequence: true },
+      })
+      return row?.sequence ?? null
+    },
+
+    async lastByAction(action: string): Promise<AuditLogWithUser | null> {
+      return db.auditLog.findFirst({
+        where: { action },
+        include: { user: { select: { id: true, email: true, name: true } } },
+        orderBy: { sequence: 'desc' },
       })
     },
 

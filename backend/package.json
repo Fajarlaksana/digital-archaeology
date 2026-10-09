@@ -14,7 +14,8 @@
     "db:seed": "prisma db seed",
     "db:status": "prisma migrate status",
     "db:studio": "prisma studio",
-    "user:create": "tsx scripts/create-user.ts"
+    "user:create": "tsx scripts/create-user.ts",
+    "user:reset-mfa": "tsx scripts/reset-mfa.ts"
   },
   "dependencies": {
     "@da/shared": "workspace:*",

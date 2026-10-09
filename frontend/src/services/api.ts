@@ -128,6 +128,12 @@ export const usersApi = {
     apiFetch<{ user: PublicUser }>(`/api/users/${id}`, { method: 'PATCH', body: input }).then(
       (r) => r.user,
     ),
+  /** Lost authenticator: `reason` records how identity was verified out of band (Phase 13b). */
+  resetMfa: (id: string, reason: string) =>
+    apiFetch<{ user: PublicUser }>(`/api/users/${id}/mfa/reset`, {
+      method: 'POST',
+      body: { reason },
+    }).then((r) => r.user),
 }
 
 // ─── Networks (Phase 4) ───
@@ -922,12 +928,26 @@ export interface AuditEntry {
 }
 
 export interface AuditFilter {
+  /** "sensitive" = vault, keys, money movement, access changes and refusals. */
+  category?: 'sensitive'
   action?: string
   result?: AuditResult
   resourceId?: string
   /** ISO timestamps (inclusive / exclusive). */
   from?: string
   to?: string
+}
+
+export interface ReviewStatus {
+  lastReview: {
+    at: string
+    by: { id: string; email: string; name: string } | null
+    upToSequence: string
+    note: string | null
+  } | null
+  /** Sensitive entries after the last reviewed sequence. */
+  sensitiveSince: number
+  latestSequence: string | null
 }
 
 export interface ChainCheck {
@@ -954,5 +974,11 @@ export const auditApi = {
     ),
   actions: () => apiFetch<{ actions: string[] }>('/api/audit-logs/actions').then((r) => r.actions),
   verify: () => apiFetch<ChainCheck>('/api/audit-logs/verify', { method: 'POST', body: {} }),
+  reviewStatus: () => apiFetch<ReviewStatus>('/api/audit-logs/reviews/status'),
+  markReviewed: (upToSequence: string, note: string) =>
+    apiFetch<{ chain: ChainCheck; reviewedSensitive: number }>('/api/audit-logs/reviews', {
+      method: 'POST',
+      body: { upToSequence, note },
+    }),
   csvUrl: (filter: AuditFilter) => `/api/reports/audit.csv${queryString({ ...filter })}`,
 }

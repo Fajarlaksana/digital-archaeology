@@ -325,6 +325,19 @@ Ubah status dari *Proposed* ke *Accepted* setelah Anda setuju. ADR-001 s/d ADR-0
   7. **Eksposur signer** diuji dengan koneksi nyata ke semua interface IPv4 non-loopback mesin.
 - **Batasan:** `/security-review` (skill Claude Code) dijalankan oleh pemilik projek dari terminal; temuannya ditindaklanjuti terpisah. Header frontend (CSP untuk aset SPA) diatur di reverse proxy produksi (Fase 14).
 
+## ADR-027 — Fitur operasional keamanan (Fase 13b)
+- **Status:** Accepted
+- **Tanggal:** 2026-10-09
+- **Konteks:** sisa checklist Fase 13. Pilihan pemilik projek: Telegram, Prometheus ber-token, reset MFA SUPER_ADMIN hanya lewat CLI.
+- **Keputusan:**
+  1. **Reset MFA** (`POST /api/users/:id/mfa/reset`, `users:manage` + konfirmasi ulang ≤ 5 menit): catatan verifikasi identitas wajib (≥ 10 karakter), menghapus secret + langkah TOTP terakhir, mencabut semua sesi; tidak untuk diri sendiri; SUPER_ADMIN ditolak (hanya CLI `user:reset-mfa`, audit `MFA_RESET_CLI` dengan hostname).
+  2. **Rate limiter** di belakang interface async `RateLimiter`. Produksi: Redis, fixed window (`INCR` + `PEXPIRE NX`), key `da:rl:<nama>:<sha256(key)>` (email/IP tidak disimpan), client tanpa offline queue; bila Redis gagal, limiter jatuh ke memori per instance (throttling melemah, tidak hilang) + warning per menit. Test & default: memori.
+  3. **Alert dipasang di audit log** (`withAlerts` membungkus repository): aksi pada daftar `ALERTS` otomatis mengirim notifikasi setelah baris audit tertulis — tidak ada jalur kode yang bisa lupa. Isi hanya label, aksi, pelaku (email), waktu, resource, dan field whitelist (`address`, `network`, `txHash`, `code`, `reason` **hanya bila berupa kode** seperti `REVERTED` — catatan bebas seperti alasan reset MFA bisa memuat data pribadi, `confirmations`, `firstBrokenSequence`); teks polos (tanpa parse mode); dikirim fire-and-forget (gagal kirim tidak menggagalkan aksi). Token bot ada di URL Telegram, jadi URL & pesan error fetch tidak pernah di-log. Nonaktif bila `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` kosong (wajib keduanya atau tidak sama sekali).
+  4. **Metrics** `GET /metrics` (format teks Prometheus, tanpa dependency): angka bisnis dihitung dari DB saat scrape (benar lintas instance & restart), request HTTP dihitung per instance dengan label **pola route** (tanpa id/PII). Bearer `METRICS_TOKEN` (≥ 32 karakter, perbandingan constant-time); tanpa token endpoint 404.
+  5. **Health:** `/health/vault` hanya menyatakan signer terjangkau + vault sudah diinisialisasi (status kunci tidak dibuka ke publik); `/health/ready` = DB + Redis + signer, 503 bila ada yang down.
+  6. **Review berkala AUDITOR:** kategori `sensitive` (daftar `SENSITIVE_ACTIONS`), `GET /api/audit-logs/reviews/status`, `POST /api/audit-logs/reviews` (`upToSequence` maju terus, catatan wajib, verifikasi rantai saat itu ikut dicatat sebagai `AUDIT_REVIEWED`).
+- **Batasan:** email pelaku ikut dikirim ke Telegram (pihak ketiga) — pakai grup privat yang anggotanya terbatas. Alert Telegram tidak menjamin terkirim (best effort, tanpa antrean ulang); metrics HTTP per instance (agregasi di Prometheus). Endpoint health/metrics sebaiknya hanya dapat diakses dari jaringan internal (reverse proxy, Fase 14).
+
 ---
 
 ## Jawaban pertanyaan terbuka (02-analysis bagian 5)

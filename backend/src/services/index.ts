@@ -2,6 +2,8 @@ import type { Logger } from '@da/shared'
 import { createSecretBox } from '../auth/secret-box'
 import type { ChainClientFactory } from '../chains/clients'
 import type { Database } from '../lib/prisma'
+import type { Notifier } from '../lib/notifier'
+import type { RateLimiterFactory } from '../lib/rate-limiter'
 import type { PriceProvider } from '../pricing/coingecko'
 import type { SignerClient } from '../signer/client'
 import { createAddressRepository } from '../repositories/address.repository'
@@ -20,8 +22,10 @@ import { createAuthService } from './auth.service'
 import { createChainHealth } from './chain-health'
 import { createDashboardService, type ScheduleInfo } from './dashboard.service'
 import { createNetworkService } from './network.service'
+import { withAlerts } from './alerts'
 import { createAuditService } from './audit.service'
 import { createDestinationService } from './destination.service'
+import { createMetricsService } from './metrics.service'
 import { createOperationalReports } from './operational-reports'
 import { createEligibilityService } from './eligibility.service'
 import { createTransactionService } from './transaction.service'
@@ -61,6 +65,12 @@ export interface ServiceConfig {
   balanceMaxAgeMs?: number
   /** How long a transaction approval stays valid (default 30 min). */
   approvalTtlMs?: number
+  /** Security alerts (Telegram) for audited events listed in services/alerts.ts. */
+  notifier?: Notifier
+  /** Shown in alerts, e.g. "production/testnet". */
+  environmentLabel?: string
+  /** Login/MFA throttling shared by all API instances (Redis); in-memory when omitted. */
+  rateLimiters?: RateLimiterFactory
   /** Phase 11: confirmations before CONFIRMED (default 3) and the STUCK threshold (30 min). */
   txConfirmations?: number
   txStuckMs?: number
@@ -71,7 +81,16 @@ export function createServices(db: Database, config: ServiceConfig) {
   const now = config.now ?? (() => new Date())
   const users = createUserRepository(db)
   const sessions = createSessionRepository(db)
-  const audit = createAuditLogRepository(db)
+  const plainAudit = createAuditLogRepository(db)
+  const audit = config.notifier
+    ? withAlerts(plainAudit, {
+        notifier: config.notifier,
+        environment: config.environmentLabel ?? 'development',
+        emailOf: async (id) => (await users.findById(id))?.email ?? null,
+        logger: config.logger,
+        now,
+      })
+    : plainAudit
   const networks = createNetworkRepository(db)
   const addresses = createAddressRepository(db)
   const isEnvSet = config.isEnvSet ?? ((name: string) => Boolean(process.env[name]))
@@ -111,6 +130,7 @@ export function createServices(db: Database, config: ServiceConfig) {
       secretBox: createSecretBox(config.mfaEncryptionKey),
       sessionTtlMs: config.sessionTtlMs,
       sessionIdleMs: config.sessionIdleMs,
+      rateLimiters: config.rateLimiters,
       now,
     }),
     users: createUserService({ users, sessions, audit, now }),
@@ -172,6 +192,9 @@ export function createServices(db: Database, config: ServiceConfig) {
     }),
     eligibilityReport: createEligibilityReport({ db, audit, fiatCurrency }),
     auditTrail: createAuditService({ audit, logger: config.logger }),
+    metrics: createMetricsService({ db }),
+    /** Exposed for /health/vault (reachability only). */
+    signer: config.signer,
     operationalReports: createOperationalReports({ db, audit, fiatCurrency }),
     vault: createVaultService({ signer: config.signer, addresses, audit, logger: config.logger }),
     ownership: createOwnershipService({

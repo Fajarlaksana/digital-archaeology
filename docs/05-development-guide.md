@@ -227,6 +227,9 @@ APPROVAL_TTL_MINUTES=30              # approval transaksi berlaku selama ini, la
 TX_CONFIRMATIONS=3                   # blok sebelum CONFIRMED
 TX_CHECK_INTERVAL_SECONDS=30         # interval job CHECK_PENDING_TRANSACTIONS
 TX_STUCK_MINUTES=30                  # tanpa receipt selama ini = STUCK (tidak otomatis gagal)
+TELEGRAM_BOT_TOKEN=                  # alert keamanan (isi keduanya atau kosongkan keduanya)
+TELEGRAM_CHAT_ID=
+METRICS_TOKEN=                       # >= 32 karakter; kosong = GET /metrics 404
 SIGNER_HMAC_SECRET=                  # sama di backend & signer
 
 # --- hanya di env service signer/ ---

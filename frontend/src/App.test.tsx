@@ -119,6 +119,35 @@ describe('Users page', () => {
     expect(within(form).getByLabelText('ANALYST')).toBeTruthy()
     expect(within(form).queryByLabelText('SUPER_ADMIN')).toBeNull()
   })
+
+  it('resets a lost authenticator with an identity-verification note (not for SUPER_ADMIN)', async () => {
+    const current = me('ADMIN')
+    const reviewer = user(['REVIEWER'], { mfaEnabled: true })
+    let body: unknown
+    mockBackend({
+      'GET /api/auth/me': () => json(200, current),
+      'GET /api/users': () =>
+        json(200, { users: [current.user, reviewer, user(['SUPER_ADMIN'], { mfaEnabled: true })] }),
+      [`POST /api/users/${reviewer.id}/mfa/reset`]: (b) => {
+        body = b
+        return json(200, { user: { ...reviewer, mfaEnabled: false } })
+      },
+    })
+    renderAt('/users')
+    const row = (await screen.findByText('reviewer@dev.local')).closest('tr')!
+    // Only one Reset MFA button: the SUPER_ADMIN row is CLI-only, the own row is locked.
+    expect(screen.getAllByRole('button', { name: 'Reset MFA' })).toHaveLength(1)
+    fireEvent.click(within(row).getByRole('button', { name: 'Reset MFA' }))
+    const form = within(row).getByRole('form', { name: 'Reset MFA reviewer@dev.local' })
+    const submit = within(form).getByRole('button', { name: 'Reset MFA' }) as HTMLButtonElement
+    expect(submit.disabled).toBe(true)
+    fireEvent.change(within(form).getByLabelText(/^Verifikasi identitas/), {
+      target: { value: 'Video call + KTP dicocokkan' },
+    })
+    fireEvent.click(submit)
+    expect(await within(row).findByText(/MFA direset/)).toBeTruthy()
+    expect(body).toEqual({ reason: 'Video call + KTP dicocokkan' })
+  })
 })
 
 describe('dashboard', () => {

@@ -1,7 +1,10 @@
+import { Redis } from 'ioredis'
 import { createLogger } from '@da/shared'
 import { buildApp } from './app'
 import { isLoopbackHost, loadEnvFile, parseEnv, type Env } from './config/env'
 import { checkDatabase, createPrismaClient } from './lib/prisma'
+import { createTelegramNotifier } from './lib/notifier'
+import { redisRateLimiterFactory } from './lib/rate-limiter'
 import { createChainClientFactory } from './chains/clients'
 import { createMaintenanceQueue } from './jobs/maintenance-queue'
 import { createScanQueue } from './jobs/scan-queue'
@@ -21,7 +24,26 @@ try {
 
 const logger = createLogger({ name: 'backend', level: env.LOG_LEVEL })
 const db = createPrismaClient(env.DATABASE_URL)
+// Login/MFA throttling shared by every API instance. No offline queue: a Redis outage makes the
+// limiter fall back to memory immediately instead of hanging logins.
+const limiterRedis = new Redis(env.REDIS_URL, {
+  maxRetriesPerRequest: 1,
+  enableOfflineQueue: false,
+})
+limiterRedis.on('error', () => undefined) // reported by the limiter itself (no URL in logs)
+const notifier =
+  env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID
+    ? createTelegramNotifier({
+        botToken: env.TELEGRAM_BOT_TOKEN,
+        chatId: env.TELEGRAM_CHAT_ID,
+        logger,
+      })
+    : undefined
+if (!notifier) logger.warn('ALERTS_DISABLED (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set)')
 const services = createServices(db, {
+  rateLimiters: redisRateLimiterFactory(limiterRedis, logger),
+  notifier,
+  environmentLabel: `${env.APP_ENV}/${env.NETWORK_MODE}`,
   mfaEncryptionKey: env.MFA_ENCRYPTION_KEY,
   sessionTtlMs: env.SESSION_TTL_HOURS * 3_600_000,
   sessionIdleMs: env.SESSION_IDLE_MINUTES * 60_000,
@@ -63,7 +85,13 @@ const maintenance = createMaintenanceQueue({
   txCheckIntervalSeconds: env.TX_CHECK_INTERVAL_SECONDS,
   checkPendingTransactions: () => services.transactions.checkInFlight(),
 })
-const app = await buildApp({ env, logger, checkDatabase: () => checkDatabase(db), services })
+const app = await buildApp({
+  env,
+  logger,
+  checkDatabase: () => checkDatabase(db),
+  checkRedis: () => limiterRedis.ping(),
+  services,
+})
 
 if (env.NETWORK_MODE === 'mainnet') {
   logger.warn('NETWORK_MODE=mainnet — real assets are at stake')
@@ -82,6 +110,7 @@ async function shutdown(signal: string): Promise<void> {
   await app.close()
   await scanQueue.close()
   await maintenance.close()
+  limiterRedis.disconnect()
   await db.$disconnect()
   process.exit(0)
 }

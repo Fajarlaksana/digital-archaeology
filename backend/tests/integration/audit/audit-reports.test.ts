@@ -202,6 +202,76 @@ describe.skipIf(!testDatabaseUrl)('audit logs & reports', () => {
     })
   })
 
+  describe('periodic AUDITOR review (Phase 13b)', () => {
+    it('filters sensitive actions only', async () => {
+      h = await createHarness(db)
+      const { token } = await userWith('AUDITOR')
+      const audit = createAuditLogRepository(db)
+      const marker = randomUUID()
+      await audit.create({ action: 'ADDRESS_CREATED', result: 'SUCCESS', resourceId: marker })
+      await audit.create({ action: 'KEY_IMPORTED', result: 'SUCCESS', resourceId: marker })
+      const res = (
+        await h.call('GET', `/api/audit-logs?category=sensitive&resourceId=${marker}`, token)
+      ).json()
+      expect(res.items.map((e: { action: string }) => e.action)).toEqual(['KEY_IMPORTED'])
+      expect((await h.call('GET', '/api/audit-logs?category=all', token)).statusCode).toBe(400)
+    })
+
+    it('marks entries reviewed up to #N with a note; shows what happened since', async () => {
+      h = await createHarness(db)
+      const { user, token } = await userWith('AUDITOR')
+      const audit = createAuditLogRepository(db)
+      await audit.create({ action: 'TX_SIGNED', result: 'SUCCESS' })
+      const before = (await h.call('GET', '/api/audit-logs/reviews/status', token)).json()
+      const upTo = before.latestSequence as string
+
+      expect(
+        (
+          await h.call('POST', '/api/audit-logs/reviews', token, {
+            upToSequence: upTo,
+            note: 'short',
+          })
+        ).statusCode,
+      ).toBe(400)
+      expect(
+        (
+          await h.call('POST', '/api/audit-logs/reviews', token, {
+            upToSequence: String(BigInt(upTo) + 1000n),
+            note: 'Weekly review — all signings match approved transactions',
+          })
+        ).statusCode,
+      ).toBe(400)
+      const res = await h.call('POST', '/api/audit-logs/reviews', token, {
+        upToSequence: upTo,
+        note: 'Weekly review — all signings match approved transactions',
+      })
+      expect(res.statusCode).toBe(200)
+      expect(res.json().chain.ok).toBe(true)
+      expect(res.json().reviewedSensitive).toBeGreaterThan(0)
+
+      const recorded = await db.auditLog.findFirst({
+        where: { userId: user.id, action: 'AUDIT_REVIEWED' },
+      })
+      expect(recorded?.metadata).toMatchObject({ upToSequence: upTo, chainOk: true })
+
+      await audit.create({ action: 'VAULT_UNLOCKED', result: 'SUCCESS' })
+      const after = (await h.call('GET', '/api/audit-logs/reviews/status', token)).json()
+      expect(after.lastReview).toMatchObject({ upToSequence: upTo, by: { id: user.id } })
+      expect(after.sensitiveSince).toBeGreaterThanOrEqual(1)
+      expect(
+        (
+          await h.call('POST', '/api/audit-logs/reviews', token, {
+            upToSequence: upTo,
+            note: 'Same range again, should be refused',
+          })
+        ).statusCode,
+      ).toBe(409)
+
+      const { token: analyst } = await userWith('ANALYST')
+      expect((await h.call('GET', '/api/audit-logs/reviews/status', analyst)).statusCode).toBe(403)
+    })
+  })
+
   describe('hash chain (tamper evidence)', () => {
     it('every new row links to the previous one, also under concurrency; the chain verifies', async () => {
       h = await createHarness(db)
@@ -266,7 +336,14 @@ describe.skipIf(!testDatabaseUrl)('audit logs & reports', () => {
             const check = await createAuditLogRepository(tx as unknown as Database).verifyChain()
             expect(check.ok).toBe(false)
             expect(check.reason).toBe(reason)
-            const expected = reason === 'ROW_MODIFIED' ? victim.sequence : victims[0]!.sequence
+            // A deletion breaks the link of the NEXT row by sequence — which may belong to
+            // another test file writing audit rows in parallel, so look it up.
+            const next = await tx.auditLog.findFirst({
+              where: { sequence: { gt: victim.sequence } },
+              orderBy: { sequence: 'asc' },
+              select: { sequence: true },
+            })
+            const expected = reason === 'ROW_MODIFIED' ? victim.sequence : next!.sequence
             expect(check.firstBrokenSequence).toBe(expected.toString())
             throw new Rollback()
           }),

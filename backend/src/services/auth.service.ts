@@ -5,7 +5,7 @@ import { verifyAgainstDummy, verifyPassword } from '../auth/password'
 import type { SecretBox } from '../auth/secret-box'
 import { hashSessionToken, newSessionToken } from '../auth/session-token'
 import { checkTotp, newTotpSecret, totpUri } from '../auth/totp'
-import { createRateLimiter } from '../lib/rate-limiter'
+import { memoryRateLimiterFactory, type RateLimiterFactory } from '../lib/rate-limiter'
 import type { AuditLogRepository } from '../repositories/audit-log.repository'
 import type { SessionRepository, SessionWithUser } from '../repositories/session.repository'
 import { roleList, type UserRepository, type UserWithRoles } from '../repositories/user.repository'
@@ -39,6 +39,8 @@ export interface AuthServiceDeps {
   sessionTtlMs: number
   sessionIdleMs: number
   now: () => Date
+  /** Redis-backed in production (shared by all instances); in-memory by default (ADR-027). */
+  rateLimiters?: RateLimiterFactory
 }
 
 const INVALID_LOGIN = () => new AppError('INVALID_CREDENTIALS', 'Invalid email or password')
@@ -47,20 +49,15 @@ const INVALID_MFA = () => new AppError('MFA_INVALID', 'Invalid or expired code')
 export function createAuthService(deps: AuthServiceDeps) {
   const { users, sessions, audit, secretBox, now } = deps
   const clockMs = () => now().getTime()
-  const accountLimiter = createRateLimiter({
+  const limiters = deps.rateLimiters ?? memoryRateLimiterFactory(clockMs)
+  const accountLimiter = limiters('login-account', {
     limit: LOGIN_ATTEMPTS_PER_ACCOUNT,
     windowMs: WINDOW_MS,
-    now: clockMs,
   })
-  const ipLimiter = createRateLimiter({
-    limit: LOGIN_ATTEMPTS_PER_IP,
-    windowMs: WINDOW_MS,
-    now: clockMs,
-  })
-  const mfaLimiter = createRateLimiter({
+  const ipLimiter = limiters('login-ip', { limit: LOGIN_ATTEMPTS_PER_IP, windowMs: WINDOW_MS })
+  const mfaLimiter = limiters('mfa-session', {
     limit: MFA_ATTEMPTS_PER_SESSION,
     windowMs: WINDOW_MS,
-    now: clockMs,
   })
 
   function record(
@@ -105,9 +102,9 @@ export function createAuthService(deps: AuthServiceDeps) {
     error: () => AppError = INVALID_MFA,
   ): Promise<never> {
     const key = ctx.session.id
-    mfaLimiter.hit(key)
+    await mfaLimiter.hit(key)
     await record(meta, action, 'FAILURE', { userId: ctx.user.id })
-    if (mfaLimiter.isLimited(key)) {
+    if (await mfaLimiter.isLimited(key)) {
       await sessions.revoke(ctx.session.id, now())
       await record(meta, 'SESSION_REVOKED_MFA_ATTEMPTS', 'DENIED', { userId: ctx.user.id })
       throw new AppError('RATE_LIMITED', 'Too many invalid codes. Please log in again.')
@@ -121,7 +118,7 @@ export function createAuthService(deps: AuthServiceDeps) {
       const accountKey = `${meta.ip ?? 'unknown'}|${normalized}`
       const ipKey = meta.ip ?? 'unknown'
 
-      if (accountLimiter.isLimited(accountKey) || ipLimiter.isLimited(ipKey)) {
+      if ((await accountLimiter.isLimited(accountKey)) || (await ipLimiter.isLimited(ipKey))) {
         await record(meta, 'LOGIN_RATE_LIMITED', 'DENIED', { metadata: { email: normalized } })
         throw new AppError('RATE_LIMITED', 'Too many login attempts. Try again later.')
       }
@@ -132,8 +129,8 @@ export function createAuthService(deps: AuthServiceDeps) {
         : await verifyAgainstDummy(password)
 
       if (!user || !passwordOk || user.status !== 'ACTIVE') {
-        accountLimiter.hit(accountKey)
-        ipLimiter.hit(ipKey)
+        await accountLimiter.hit(accountKey)
+        await ipLimiter.hit(ipKey)
         let reason = !user
           ? 'unknown_email'
           : !passwordOk
@@ -154,7 +151,7 @@ export function createAuthService(deps: AuthServiceDeps) {
         throw INVALID_LOGIN()
       }
 
-      accountLimiter.reset(accountKey)
+      await accountLimiter.reset(accountKey)
       await users.recordSuccessfulLogin(user.id, now())
 
       const roles = roleList(user)
@@ -206,7 +203,7 @@ export function createAuthService(deps: AuthServiceDeps) {
       if (!(await verifyAndConsumeTotp(ctx.user, code, false))) {
         return failMfa(ctx, meta, 'MFA_VERIFY_FAILED')
       }
-      mfaLimiter.reset(ctx.session.id)
+      await mfaLimiter.reset(ctx.session.id)
       await sessions.activate(ctx.session.id, now())
       await record(meta, 'MFA_VERIFIED', 'SUCCESS', { userId: ctx.user.id })
     },
@@ -228,7 +225,7 @@ export function createAuthService(deps: AuthServiceDeps) {
       if (!(await verifyAndConsumeTotp(user, code, true))) {
         return failMfa({ ...ctx, user }, meta, 'MFA_ENABLE_FAILED')
       }
-      mfaLimiter.reset(ctx.session.id)
+      await mfaLimiter.reset(ctx.session.id)
       await sessions.activate(ctx.session.id, now())
       await record(meta, 'MFA_ENABLED', 'SUCCESS', { userId: user.id })
     },
@@ -252,7 +249,7 @@ export function createAuthService(deps: AuthServiceDeps) {
           () => new AppError('INVALID_CREDENTIALS', 'Invalid password or code'),
         )
       }
-      mfaLimiter.reset(ctx.session.id)
+      await mfaLimiter.reset(ctx.session.id)
       await sessions.markReauth(ctx.session.id, now())
       await record(meta, 'REAUTH_SUCCESS', 'SUCCESS', { userId: ctx.user.id })
     },
@@ -268,7 +265,7 @@ export function createAuthService(deps: AuthServiceDeps) {
       if (!(await verifyAndConsumeTotp(ctx.user, code, false))) {
         return failMfa(ctx, meta, 'MFA_CONFIRM_FAILED')
       }
-      mfaLimiter.reset(ctx.session.id)
+      await mfaLimiter.reset(ctx.session.id)
     },
 
     async logout(ctx: AuthContext, meta: RequestMeta) {

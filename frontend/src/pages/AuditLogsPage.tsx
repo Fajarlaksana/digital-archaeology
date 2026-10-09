@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Fragment, useState } from 'react'
 import { Badge, Button, ErrorMessage, Field } from '../components/ui'
 import { dayBound } from '../lib/dates'
@@ -15,7 +15,14 @@ const RESULT_TONE: Record<AuditResult, 'green' | 'amber' | 'red'> = {
  * hash-chain integrity check. Metadata was redacted when it was written.
  */
 export function AuditLogsPage() {
-  const [form, setForm] = useState({ action: '', result: '', resourceId: '', from: '', to: '' })
+  const [form, setForm] = useState({
+    sensitive: false,
+    action: '',
+    result: '',
+    resourceId: '',
+    from: '',
+    to: '',
+  })
   const [applied, setApplied] = useState<AuditFilter>({})
   const [open, setOpen] = useState<string | null>(null)
   const actions = useQuery({ queryKey: ['audit', 'actions'], queryFn: auditApi.actions })
@@ -30,6 +37,7 @@ export function AuditLogsPage() {
   function apply(event: React.FormEvent) {
     event.preventDefault()
     setApplied({
+      category: form.sensitive ? 'sensitive' : undefined,
       action: form.action || undefined,
       result: (form.result || undefined) as AuditResult | undefined,
       resourceId: form.resourceId.trim() || undefined,
@@ -48,6 +56,8 @@ export function AuditLogsPage() {
         Jejak seluruh aktivitas, hanya-baca. Setiap baris terhubung ke baris sebelumnya dengan hash
         (SHA-256), sehingga perubahan atau penghapusan bisa dideteksi.
       </p>
+
+      <ReviewPanel />
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <Button variant="secondary" disabled={verify.isPending} onClick={() => verify.mutate()}>
@@ -129,6 +139,14 @@ export function AuditLogsPage() {
           value={form.to}
           onChange={(e) => setForm({ ...form, to: e.target.value })}
         />
+        <label className="flex items-center gap-2 text-sm sm:col-span-6">
+          <input
+            type="checkbox"
+            checked={form.sensitive}
+            onChange={(e) => setForm({ ...form, sensitive: e.target.checked })}
+          />
+          Aksi sensitif saja (vault, key, transaksi, akses, MFA, penolakan)
+        </label>
         <div className="sm:col-span-6">
           <Button type="submit">Terapkan filter</Button>
         </div>
@@ -209,6 +227,74 @@ export function AuditLogsPage() {
             Muat lebih banyak
           </Button>
         </div>
+      )}
+    </section>
+  )
+}
+
+/** Periodic review (Phase 13b): what was reviewed last, and recording a new review. */
+function ReviewPanel() {
+  const queryClient = useQueryClient()
+  const status = useQuery({ queryKey: ['audit', 'review'], queryFn: auditApi.reviewStatus })
+  const [note, setNote] = useState('')
+  const review = useMutation({
+    mutationFn: (input: { upTo: string; note: string }) =>
+      auditApi.markReviewed(input.upTo, input.note),
+    onSuccess: async () => {
+      setNote('')
+      await queryClient.invalidateQueries({ queryKey: ['audit'] })
+    },
+  })
+  const s = status.data
+  if (!s) return <ErrorMessage error={status.error} />
+  return (
+    <section
+      aria-label="Review berkala"
+      className="mt-4 rounded-lg border border-slate-200 bg-white p-4 text-sm"
+    >
+      <h2 className="font-semibold">Review berkala</h2>
+      <p className="mt-1 text-slate-600">
+        {s.lastReview ? (
+          <>
+            Terakhir direview sampai #{s.lastReview.upToSequence} oleh{' '}
+            {s.lastReview.by?.email ?? '—'} ({new Date(s.lastReview.at).toLocaleString('id-ID')}).
+          </>
+        ) : (
+          'Belum pernah ada review.'
+        )}{' '}
+        <strong>{s.sensitiveSince}</strong> aksi sensitif sejak itu.
+      </p>
+      {s.latestSequence && (
+        <form
+          aria-label="Tandai sudah direview"
+          className="mt-3 flex flex-wrap items-end gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            review.mutate({ upTo: s.latestSequence!, note: note.trim() })
+          }}
+        >
+          <div className="min-w-0 flex-1">
+            <Field
+              label="Catatan review"
+              hint="Mis. semua signing cocok dengan transaksi yang di-approve; tidak ada reveal."
+              required
+              minLength={10}
+              maxLength={1000}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </div>
+          <Button type="submit" disabled={note.trim().length < 10 || review.isPending}>
+            Tandai sudah direview sampai #{s.latestSequence}
+          </Button>
+        </form>
+      )}
+      <ErrorMessage error={review.error} />
+      {review.data && (
+        <p role="status" className="mt-2 text-emerald-800">
+          Review tercatat ({review.data.reviewedSensitive} aksi sensitif). Rantai{' '}
+          {review.data.chain.ok ? 'utuh' : 'RUSAK'}; head #{review.data.chain.headSequence}.
+        </p>
       )}
     </section>
   )

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { CLI_ONLY_ROLES, ROLES, type RoleName } from '@da/shared/rbac'
 import { useAuth } from '../auth/useAuth'
+import { useSensitive } from '../components/sensitive'
 import { Button, ErrorMessage, Field } from '../components/ui'
 import { usersApi, type PublicUser, type UserStatus } from '../services/api'
 
@@ -175,6 +176,19 @@ function UserRow({
     },
   })
 
+  const sensitive = useSensitive()
+  const [resetting, setResetting] = useState(false)
+  const [reason, setReason] = useState('')
+  const [resetDone, setResetDone] = useState(false)
+  const resetMfa = () =>
+    sensitive.run(async () => {
+      await usersApi.resetMfa(user.id, reason.trim())
+      setResetting(false)
+      setReason('')
+      setResetDone(true)
+      await queryClient.invalidateQueries({ queryKey: USERS_KEY })
+    })
+
   const cliOnly = user.roles.some((role) => CLI_ONLY_ROLES.includes(role))
   const locked = isSelf || cliOnly
   const lockReason = isSelf ? 'Tidak bisa mengubah akun sendiri' : 'Hanya lewat CLI server'
@@ -216,6 +230,11 @@ function UserRow({
               <Button variant="secondary" onClick={() => setEditing(true)}>
                 Ubah role
               </Button>
+              {user.mfaEnabled && (
+                <Button variant="secondary" onClick={() => setResetting(true)}>
+                  Reset MFA
+                </Button>
+              )}
               {user.status === 'ACTIVE' ? (
                 <Button variant="secondary" onClick={() => update.mutate({ status: 'DISABLED' })}>
                   Nonaktifkan
@@ -226,6 +245,41 @@ function UserRow({
                 </Button>
               )}
             </div>
+          )}
+          {resetting && (
+            <form
+              aria-label={`Reset MFA ${user.email}`}
+              className="mt-2 space-y-2"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void resetMfa()
+              }}
+            >
+              <Field
+                label="Verifikasi identitas"
+                hint="Bagaimana identitas orang ini dipastikan di luar sistem (mis. video call + KTP). Semua sesinya berakhir; MFA dipasang ulang saat login berikutnya."
+                required
+                minLength={10}
+                maxLength={500}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+              />
+              <div className="flex gap-2">
+                <Button type="submit" disabled={reason.trim().length < 10}>
+                  Reset MFA
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => setResetting(false)}>
+                  Batal
+                </Button>
+              </div>
+            </form>
+          )}
+          {sensitive.panel}
+          <ErrorMessage error={sensitive.error} />
+          {resetDone && (
+            <p role="status" className="mt-1 text-xs text-emerald-700">
+              MFA direset. User harus memasang authenticator lagi saat login.
+            </p>
           )}
           <ErrorMessage error={update.error} />
         </td>

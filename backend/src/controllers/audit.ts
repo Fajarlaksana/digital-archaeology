@@ -7,6 +7,7 @@ import type { AuthContext } from '../services/auth.service'
 import type { OperationalReports } from '../services/operational-reports'
 
 const auditFilter = z.object({
+  category: z.enum(['sensitive']).optional(),
   action: z.string().trim().max(100).optional(),
   userId: z.uuid().optional(),
   result: z.enum(AuditResult).optional(),
@@ -21,6 +22,10 @@ const auditList = auditFilter.extend({
     .regex(/^\d{1,19}$/)
     .optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
+})
+const reviewBody = z.object({
+  upToSequence: z.string().regex(/^\d{1,19}$/),
+  note: z.string().trim().min(10).max(1000),
 })
 const networkFilter = z.object({ networkId: z.uuid().optional() })
 const transactionFilter = networkFilter.extend({
@@ -55,6 +60,14 @@ export function registerAuditAndReportRoutes(
 
   app.get('/api/audit-logs', auditRead, async (request) =>
     deps.audit.list(dates(auditList.parse(request.query))),
+  )
+  app.get('/api/audit-logs/reviews/status', auditRead, async () => deps.audit.reviewStatus())
+  // Periodic AUDITOR review (Phase 13b): "everything up to #N was looked at", with a note.
+  app.post(
+    '/api/audit-logs/reviews',
+    { ...auditRead, config: { skipGenericAudit: true } },
+    async (request) =>
+      deps.audit.markReviewed(ctx(request), reviewBody.parse(request.body), requestMeta(request)),
   )
   app.get('/api/audit-logs/actions', auditRead, async () => ({
     actions: await deps.audit.actions(),

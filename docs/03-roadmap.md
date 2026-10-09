@@ -90,7 +90,7 @@ M4 Production     : F12 → F13 → F14
 - [x] Audit otomatis: login sukses/gagal, akun terkunci, MFA, akses ditolak, perubahan user (before/after), dan setiap request POST/PATCH/DELETE (tanpa body)
 - [x] CSRF: tolak `Origin` asing untuk request yang mengubah data, parser `text/plain` dihapus
 - [x] Frontend: login, verifikasi & setup MFA (QR), menu sesuai permission, halaman Users
-- [ ] Reset MFA untuk user yang kehilangan perangkat → dipindah ke Fase 13 (butuh prosedur verifikasi identitas)
+- [x] Reset MFA untuk user yang kehilangan perangkat → dikerjakan di Fase 13b
 
 **DoD:** test integrasi membuktikan setiap role hanya bisa mengakses endpoint yang diizinkan, ADMIN biasa tidak bisa mengakses endpoint vault, dan password tidak pernah muncul di log.
 
@@ -281,18 +281,18 @@ M4 Production     : F12 → F13 → F14
 
 ## Fase 13 — Hardening Keamanan & Monitoring · M
 
-> Dikerjakan dalam sesi: **13a** test keamanan & hardening ✅ · **13b** fitur operasional. (ADR-026)
+> Dikerjakan dalam sesi: **13a** test keamanan & hardening ✅ · **13b** fitur operasional ✅. (ADR-026, ADR-027)
 
 - [x] Security test (SA bagian 17): **inventaris route** otomatis (setiap `/api` route wajib guard; hanya login yang publik; di luar alur auth wajib *permission*; aksi vault/keputusan/sign/broadcast wajib konfirmasi ulang ≤ 5 menit; setiap route menolak anonim dengan 401), **fuzz input** di semua route POST/PATCH (tidak pernah 5xx, tidak pernah memantulkan input). Rate limit, replay (HMAC, TOTP, challenge, nonce) dan approval flow sudah diuji di fase masing-masing
 - [x] Test "no secret leakage": seluruh siklus (import key + seed, reveal, challenge, preview → approve → sign → broadcast) lalu cari key/seed/passphrase/password/TOTP secret di log, semua response (kecuali reveal), dan dump **semua tabel** DB aplikasi; versi signer memeriksa `da_vault`, log, dan response HTTP signer. Keduanya terbukti menangkap kebocoran yang disisipkan (mutation check)
 - [x] Signer tidak bisa diakses dari luar: test mencoba konek lewat semua interface IPv4 non-loopback (harus ditolak); bind ke `0.0.0.0` terbukti terdeteksi
-- [ ] Notifikasi (email/Telegram) setiap vault unlock, reveal, dan signing
-- [ ] Review audit log aksi SUPER_ADMIN oleh AUDITOR (prosedur berkala)
-- [ ] Metrics (SA bagian 10) + health check lengkap
+- [x] Notifikasi **Telegram** (dipasang di audit log, sehingga tidak ada jalur yang terlewat): vault dibuka / gagal dibuka / dipulihkan, import & reveal key, sign, signature ditolak, broadcast, CONFIRMED/FAILED/STUCK, akun terkunci, reset MFA, rantai audit rusak. Hanya field yang di-whitelist; teks polos; gagal kirim tidak pernah menggagalkan aksi; token bot tidak pernah di-log
+- [x] Review audit log oleh AUDITOR (prosedur berkala): filter **aksi sensitif**, status review terakhir + jumlah aksi sensitif sejak itu, **Tandai sudah direview sampai #N** (catatan wajib, cek integritas rantai sekaligus, `AUDIT_REVIEWED`); prosedur di manual §12
+- [x] Metrics Prometheus `GET /metrics` (SA 10: scan per status, durasi rata-rata, address per status aktivitas, terverifikasi, ter-scan, transaksi per status, error RPC, request HTTP per pola route) dengan bearer `METRICS_TOKEN` (tanpa token = 404); `/health/vault` (signer terjangkau, tanpa status kunci) dan `/health/ready` (DB + Redis + signer)
 - [x] Dependency audit (`pnpm audit` → 0 temuan; 6 temuan transitif dari tooling Prisma CLI ditutup dengan `overrides`), header keamanan (`@fastify/helmet`: CSP `default-src 'none'`, `frame-ancestors 'none'`, X-Frame-Options DENY, nosniff, no-referrer, CORP same-origin, HSTS bila HTTPS), CORS ketat (tanpa header CORS sama sekali + tolak write lintas origin)
 - [ ] Jalankan `/security-review` di Claude Code dan tindaklanjuti temuannya
-- [ ] Reset MFA oleh ADMIN untuk user yang kehilangan perangkat (dengan verifikasi identitas + audit)
-- [ ] Pindahkan rate limiter login ke Redis jika API dijalankan lebih dari satu instance
+- [x] Reset MFA oleh ADMIN untuk user yang kehilangan perangkat: catatan verifikasi identitas wajib, konfirmasi ulang ≤ 5 menit, semua sesi user dicabut, MFA dipasang ulang saat login; bukan untuk diri sendiri; SUPER_ADMIN hanya lewat CLI `user:reset-mfa`; audit `MFA_RESET` / `MFA_RESET_CLI`
+- [x] Rate limiter login & MFA di **Redis** (dibagi semua instance, key di-hash, jatuh ke memori bila Redis mati)
 
 ---
 
@@ -319,6 +319,7 @@ M4 Production     : F12 → F13 → F14
 | 2026-10-01 | F0 | ADR-001/002/004–007 Accepted: TypeScript stack, EVM Sepolia, internal use, >3 operator |
 | 2026-10-01 | F1 | Monorepo + shared/backend/frontend, 49 test hijau. Pending: verifikasi Docker (Docker Desktop gagal start) |
 | 2026-10-02 | F1 | Docker Desktop (Hyper-V) hidup: `docker compose up -d` terverifikasi (port 5434), dev DB pindah ke Docker (ADR-013) |
+| 2026-10-09 | F13b | Reset MFA (ADMIN + CLI), rate limiter Redis, alert Telegram via audit, metrics Prometheus + /health/vault + /health/ready, review berkala AUDITOR; 732 test hijau |
 | 2026-10-05 | F13a | Inventaris route + fuzz input + test kebocoran rahasia (backend & signer) + test eksposur signer, helmet/CORS, pnpm audit bersih; 709 test hijau |
 | 2026-10-05 | F12 | Laporan Balance/Authorization/Transaction/Audit (awalan kolom SA 13), halaman Reports & Audit Logs, hash chain audit + verifikasi; 698 test hijau |
 | 2026-10-05 | F11 | Broadcast + CHECK_PENDING_TRANSACTIONS (3 konfirmasi, FAILED reverted/replaced, STUCK), TRANSFERRED + refresh saldo, link explorer, checklist E2E Sepolia (docs/08); 680 test hijau |

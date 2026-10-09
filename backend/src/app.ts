@@ -36,7 +36,12 @@ const CLIENT_ERROR_MESSAGES: Record<string, string> = {
 
 export type AppEnv = Pick<
   Env,
-  'NETWORK_MODE' | 'APP_ENV' | 'APP_ORIGIN' | 'SESSION_TTL_HOURS' | 'COOKIE_SECURE'
+  | 'NETWORK_MODE'
+  | 'APP_ENV'
+  | 'APP_ORIGIN'
+  | 'SESSION_TTL_HOURS'
+  | 'COOKIE_SECURE'
+  | 'METRICS_TOKEN'
 >
 
 /** Every registered route and its protection (verified by the route inventory test, Phase 13). */
@@ -57,6 +62,8 @@ export interface AppDeps {
   env: AppEnv
   logger: Logger
   checkDatabase: () => Promise<number>
+  /** Redis ping for /health/ready (omitted in tests without Redis). */
+  checkRedis?: () => Promise<unknown>
   /** Omitted only in tests that exercise infrastructure routes (health, error handling). */
   services?: AppServices
 }
@@ -150,10 +157,27 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     reply.status(404).send(toErrorBody('NOT_FOUND', 'Route not found', request.id)),
   )
 
+  if (deps.services) {
+    const metrics = deps.services.metrics
+    app.addHook('onResponse', async (request, reply) => {
+      metrics.countRequest(
+        request.method,
+        request.routeOptions.url ?? 'unmatched',
+        reply.statusCode,
+      )
+    })
+  }
   registerHealthRoutes(app, {
     env: deps.env,
     checkDatabase: deps.checkDatabase,
     checkRpc: deps.services?.checkRpc,
+    checkRedis: deps.checkRedis,
+    checkSigner: deps.services
+      ? async () => ({ initialized: (await deps.services!.signer.status()).initialized })
+      : undefined,
+    metrics: deps.services
+      ? { render: () => deps.services!.metrics.render(), token: deps.env.METRICS_TOKEN }
+      : undefined,
   })
 
   if (deps.services) {

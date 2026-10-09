@@ -146,21 +146,20 @@ describe('session tokens', () => {
 })
 
 describe('rate limiter', () => {
-  it('limits after N hits within the window and resets afterwards', () => {
+  it('limits after N hits within the window and resets afterwards', async () => {
     let t = 0
     const limiter = createRateLimiter({ limit: 3, windowMs: 1000, now: () => t })
-    for (let i = 0; i < 3; i++) limiter.hit('k')
-    expect(limiter.isLimited('k')).toBe(true)
-    expect(limiter.isLimited('other')).toBe(false)
-    expect(limiter.retryAfterMs('k')).toBe(1000)
+    for (let i = 0; i < 3; i++) await limiter.hit('k')
+    expect(await limiter.isLimited('k')).toBe(true)
+    expect(await limiter.isLimited('other')).toBe(false)
     t = 1000
-    expect(limiter.isLimited('k')).toBe(false)
+    expect(await limiter.isLimited('k')).toBe(false)
   })
 
-  it('can be reset explicitly', () => {
+  it('can be reset explicitly', async () => {
     const limiter = createRateLimiter({ limit: 1, windowMs: 1000 })
-    limiter.hit('k')
-    limiter.reset('k')
-    expect(limiter.isLimited('k')).toBe(false)
+    await limiter.hit('k')
+    await limiter.reset('k')
+    expect(await limiter.isLimited('k')).toBe(false)
   })
 })

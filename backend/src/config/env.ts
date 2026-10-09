@@ -84,6 +84,18 @@ const envSchema = z
     SIGNER_URL: z.url({ protocol: /^https?$/ }).default('http://127.0.0.1:4000'),
     /** Explicit, logged opt-out for a private container network until TLS is set up (Phase 14). */
     SIGNER_ALLOW_INSECURE_HTTP: z.enum(['true', 'false']).default('false'),
+
+    // --- Monitoring (Phase 13b) ---
+    /** Bearer token for GET /metrics (Prometheus). Unset = /metrics answers 404. */
+    METRICS_TOKEN: optional(z.string().min(32).max(256)),
+
+    // --- Alerts (Phase 13b) ---
+    /** Telegram bot for security alerts (vault, reveal, signing, broadcast, audit chain...). */
+    TELEGRAM_BOT_TOKEN: optional(
+      z.string().regex(/^\d{5,}:[A-Za-z0-9_-]{30,}$/, 'not a bot token'),
+    ),
+    /** Chat / group / channel id (e.g. -1001234567890 or @channel). */
+    TELEGRAM_CHAT_ID: optional(z.string().regex(/^(-?\d{5,}|@[A-Za-z0-9_]{5,})$/, 'not a chat id')),
     /** Shared with the signer. Without it, vault endpoints answer SIGNER_UNAVAILABLE. */
     SIGNER_HMAC_SECRET: optional(z.string().min(32)),
 
@@ -99,6 +111,10 @@ const envSchema = z
       .string()
       .regex(/^[A-Za-z0-9+/]+={0,2}$/)
       .refine((value) => Buffer.from(value, 'base64').length === 32, 'must decode to 32 bytes'),
+  })
+  .refine((env) => Boolean(env.TELEGRAM_BOT_TOKEN) === Boolean(env.TELEGRAM_CHAT_ID), {
+    message: 'set both TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID, or neither',
+    path: ['TELEGRAM_CHAT_ID'],
   })
   .refine(
     (env) =>
